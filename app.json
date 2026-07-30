@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Hockey Parent DJ",
+    "slug": "hockey-parent-dj",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "hockeydj",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hockeyparentdj.app",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["spotify"],
+        "UIBackgroundModes": ["audio"]
+      }
+    },
+    "android": {
+      "package": "com.hockeyparentdj.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar"
+    ],
+    "extra": {
+      "spotifyClientId": "YOUR_SPOTIFY_CLIENT_ID",
+      "spotifyRedirectUri": "hockeydj://spotify-auth-callback",
+      "spotifyTokenSwapUrl": "",
+      "spotifyTokenRefreshUrl": ""
+    }
+  }
+}
