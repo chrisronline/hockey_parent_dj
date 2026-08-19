@@ -1,12 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme, CATEGORY_COLORS } from '../../src/theme';
 import { usePlaylistStore } from '../../src/stores/playlistStore';
@@ -14,7 +7,7 @@ import {
   PLAYLIST_CATEGORIES,
   PlaylistCategory,
 } from '../../src/types';
-import { Button, Card, Field } from '../../src/components/ui';
+import { Button, Card, Field, BottomSheet } from '../../src/components/ui';
 
 export default function PlaylistsScreen() {
   const router = useRouter();
@@ -87,57 +80,56 @@ export default function PlaylistsScreen() {
         <Button title="+ New Playlist" onPress={() => setCreating(true)} />
       </View>
 
-      <Modal visible={creating} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>New Playlist</Text>
-            <Field
-              label="Name"
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Pre-game Hype"
-              autoFocus
+      <BottomSheet
+        visible={creating}
+        onClose={() => setCreating(false)}
+        title="New Playlist"
+      >
+        <Field
+          label="Name"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Pre-game Hype"
+          autoFocus
+        />
+        <Text style={styles.label}>Category</Text>
+        <View style={styles.catRow}>
+          {PLAYLIST_CATEGORIES.map((c) => (
+            <Pressable
+              key={c}
+              onPress={() => setCategory(c)}
+              style={[
+                styles.catChip,
+                category === c && {
+                  backgroundColor: CATEGORY_COLORS[c],
+                  borderColor: CATEGORY_COLORS[c],
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.catChipText,
+                  category === c && { color: theme.colors.bg },
+                ]}
+              >
+                {c}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.modalActions}>
+          <View style={{ flex: 1 }}>
+            <Button
+              title="Cancel"
+              variant="ghost"
+              onPress={() => setCreating(false)}
             />
-            <Text style={styles.label}>Category</Text>
-            <View style={styles.catRow}>
-              {PLAYLIST_CATEGORIES.map((c) => (
-                <Pressable
-                  key={c}
-                  onPress={() => setCategory(c)}
-                  style={[
-                    styles.catChip,
-                    category === c && {
-                      backgroundColor: CATEGORY_COLORS[c],
-                      borderColor: CATEGORY_COLORS[c],
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.catChipText,
-                      category === c && { color: theme.colors.bg },
-                    ]}
-                  >
-                    {c}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <View style={styles.modalActions}>
-              <View style={{ flex: 1 }}>
-                <Button
-                  title="Cancel"
-                  variant="ghost"
-                  onPress={() => setCreating(false)}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Button title="Create" onPress={create} />
-              </View>
-            </View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button title="Create" onPress={create} />
           </View>
         </View>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
@@ -176,24 +168,6 @@ const styles = StyleSheet.create({
     left: theme.spacing(2),
     right: theme.spacing(2),
     bottom: theme.spacing(2),
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: theme.colors.card,
-    borderTopLeftRadius: theme.radius.lg,
-    borderTopRightRadius: theme.radius.lg,
-    padding: theme.spacing(2.5),
-    paddingBottom: theme.spacing(4),
-  },
-  modalTitle: {
-    color: theme.colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-    marginBottom: theme.spacing(2),
   },
   label: {
     color: theme.colors.textMuted,

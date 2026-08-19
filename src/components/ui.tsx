@@ -1,7 +1,11 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -9,6 +13,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme';
 
 export function Button({
@@ -66,6 +71,51 @@ export function Card({
   style?: ViewStyle;
 }) {
   return <View style={[styles.card, style]}>{children}</View>;
+}
+
+/**
+ * Bottom-sheet modal that lifts above the keyboard. The stock modals sat at the
+ * bottom of the screen, so an autofocused field would raise the keyboard and
+ * bury the sheet's inputs/buttons. KeyboardAvoidingView + a scrollable body keep
+ * everything reachable; tapping the backdrop dismisses.
+ */
+export function BottomSheet({
+  visible,
+  onClose,
+  title,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={styles.sheetBackdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <Pressable style={styles.sheetBackdropFill} onPress={onClose} />
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: Math.max(insets.bottom, theme.spacing(2)) },
+          ]}
+        >
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>{title}</Text>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {children}
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
 }
 
 export function Field(props: TextInputProps & { label?: string }) {
@@ -138,4 +188,32 @@ const styles = StyleSheet.create({
   },
   empty: { padding: theme.spacing(4), alignItems: 'center' },
   emptyText: { color: theme.colors.textMuted, fontSize: 15, textAlign: 'center' },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheetBackdropFill: { flex: 1 },
+  sheet: {
+    backgroundColor: theme.colors.card,
+    borderTopLeftRadius: theme.radius.lg,
+    borderTopRightRadius: theme.radius.lg,
+    paddingHorizontal: theme.spacing(2.5),
+    paddingTop: theme.spacing(1.5),
+    maxHeight: '85%',
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.colors.border,
+    marginBottom: theme.spacing(1.5),
+  },
+  sheetTitle: {
+    color: theme.colors.text,
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: theme.spacing(2),
+  },
 });

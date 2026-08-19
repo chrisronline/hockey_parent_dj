@@ -31,11 +31,12 @@
     },
     "plugins": [
       "expo-router",
-      "expo-status-bar"
+      "expo-status-bar",
+      "./plugins/withSpotifyAuth"
     ],
     "extra": {
-      "spotifyClientId": "YOUR_SPOTIFY_CLIENT_ID",
-      "spotifyRedirectUri": "hockeydj://spotify-auth-callback",
+      "spotifyClientId": "b473151e683d4d0d88427c55c1248041",
+      "spotifyRedirectUri": "hockeydj://callback",
       "spotifyTokenSwapUrl": "",
       "spotifyTokenRefreshUrl": ""
     }

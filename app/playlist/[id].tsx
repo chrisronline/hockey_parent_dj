@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,9 +11,9 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { theme } from '../../src/theme';
 import { usePlaylistStore } from '../../src/stores/playlistStore';
-import { Song } from '../../src/types';
-import { Button, Card, Field, Empty } from '../../src/components/ui';
+import { Button, Card, Field, Empty, BottomSheet } from '../../src/components/ui';
 import { SongEditor } from '../../src/components/SongEditor';
+import { TrackSearch } from '../../src/components/TrackSearch';
 import { parseTrackUri } from '../../src/spotify/uri';
 import { playback } from '../../src/playback/playbackEngine';
 import { formatMs } from '../../src/utils';
@@ -31,6 +30,7 @@ export default function PlaylistDetail() {
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [pasteMode, setPasteMode] = useState(false);
   const [uriInput, setUriInput] = useState('');
   const [titleInput, setTitleInput] = useState('');
   const [artistInput, setArtistInput] = useState('');
@@ -42,6 +42,14 @@ export default function PlaylistDetail() {
       </View>
     );
   }
+
+  const closeAdd = () => {
+    setAdding(false);
+    setPasteMode(false);
+    setUriInput('');
+    setTitleInput('');
+    setArtistInput('');
+  };
 
   const submitSong = () => {
     const uri = parseTrackUri(uriInput);
@@ -57,10 +65,7 @@ export default function PlaylistDetail() {
       title: titleInput.trim() || 'Untitled track',
       artist: artistInput.trim() || '',
     });
-    setUriInput('');
-    setTitleInput('');
-    setArtistInput('');
-    setAdding(false);
+    closeAdd();
   };
 
   const move = (index: number, dir: -1 | 1) => {
@@ -199,10 +204,9 @@ export default function PlaylistDetail() {
         />
       </ScrollView>
 
-      <Modal visible={adding} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Add Song</Text>
+      <BottomSheet visible={adding} onClose={closeAdd} title="Add Song">
+        {pasteMode ? (
+          <>
             <Text style={styles.muted}>
               In Spotify, tap ⋯ on a track → Share → Copy Song Link, then paste
               it here.
@@ -231,18 +235,40 @@ export default function PlaylistDetail() {
             <View style={styles.modalActions}>
               <View style={{ flex: 1 }}>
                 <Button
-                  title="Cancel"
+                  title="Back to search"
                   variant="ghost"
-                  onPress={() => setAdding(false)}
+                  onPress={() => setPasteMode(false)}
                 />
               </View>
               <View style={{ flex: 1 }}>
                 <Button title="Add" onPress={submitSong} />
               </View>
             </View>
-          </View>
-        </View>
-      </Modal>
+          </>
+        ) : (
+          <>
+            <TrackSearch
+              autoFocus
+              onPick={(t) => {
+                addSong(playlist.id, {
+                  uri: t.uri,
+                  title: t.title,
+                  artist: t.artist,
+                  albumImageUrl: t.albumImageUrl,
+                  durationMs: t.durationMs,
+                });
+                closeAdd();
+              }}
+            />
+            <Button
+              title="Paste a link instead"
+              variant="ghost"
+              onPress={() => setPasteMode(true)}
+              style={{ marginTop: theme.spacing(1) }}
+            />
+          </>
+        )}
+      </BottomSheet>
     </View>
   );
 }
@@ -280,23 +306,5 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing(1),
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: theme.colors.card,
-    borderTopLeftRadius: theme.radius.lg,
-    borderTopRightRadius: theme.radius.lg,
-    padding: theme.spacing(2.5),
-    paddingBottom: theme.spacing(4),
-  },
-  modalTitle: {
-    color: theme.colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-    marginBottom: theme.spacing(1),
-  },
   modalActions: { flexDirection: 'row', gap: theme.spacing(1.5) },
 });

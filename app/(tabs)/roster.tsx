@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,9 +10,9 @@ import {
 import { theme } from '../../src/theme';
 import { useRosterStore } from '../../src/stores/rosterStore';
 import { Player } from '../../src/types';
-import { Button, Card, Field, Empty } from '../../src/components/ui';
+import { Button, Card, Field, Empty, BottomSheet } from '../../src/components/ui';
 import { SongEditor } from '../../src/components/SongEditor';
-import { parseTrackUri } from '../../src/spotify/uri';
+import { TrackSearch } from '../../src/components/TrackSearch';
 import { playback } from '../../src/playback/playbackEngine';
 
 export default function RosterScreen() {
@@ -26,10 +25,6 @@ export default function RosterScreen() {
   const [name, setName] = useState('');
   const [number, setNumber] = useState('');
   const [importText, setImportText] = useState('');
-
-  // Per-player song-assignment inputs, keyed by player id.
-  const [songUri, setSongUri] = useState('');
-  const [songTitle, setSongTitle] = useState('');
 
   const addOne = () => {
     if (!name.trim()) return;
@@ -48,23 +43,6 @@ export default function RosterScreen() {
 
   const openAssign = (p: Player) => {
     setExpanded(expanded === p.id ? null : p.id);
-    setSongUri('');
-    setSongTitle(p.song?.title ?? '');
-  };
-
-  const assign = (p: Player) => {
-    const uri = parseTrackUri(songUri);
-    if (!uri) {
-      Alert.alert('Invalid track', 'Paste a Spotify track link or URI.');
-      return;
-    }
-    assignSong(p.id, {
-      id: p.song?.id ?? p.id,
-      uri,
-      title: songTitle.trim() || 'Goal song',
-      artist: '',
-    });
-    setSongUri('');
   };
 
   return (
@@ -100,20 +78,18 @@ export default function RosterScreen() {
 
               {expanded === p.id && (
                 <View style={styles.assignArea}>
-                  <Field
-                    label="Goal song — Spotify link or URI"
-                    value={songUri}
-                    onChangeText={setSongUri}
-                    placeholder="https://open.spotify.com/track/..."
-                    autoCapitalize="none"
+                  <TrackSearch
+                    onPick={(t) =>
+                      assignSong(p.id, {
+                        id: p.song?.id ?? p.id,
+                        uri: t.uri,
+                        title: t.title,
+                        artist: t.artist,
+                        albumImageUrl: t.albumImageUrl,
+                        durationMs: t.durationMs,
+                      })
+                    }
                   />
-                  <Field
-                    label="Song title"
-                    value={songTitle}
-                    onChangeText={setSongTitle}
-                    placeholder="Song name"
-                  />
-                  <Button title="Save goal song" onPress={() => assign(p)} />
 
                   {p.song && (
                     <View style={{ marginTop: theme.spacing(1.5) }}>
@@ -170,58 +146,56 @@ export default function RosterScreen() {
       </ScrollView>
 
       {/* Add single player */}
-      <Modal visible={adding} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Add Player</Text>
-            <Field label="Name" value={name} onChangeText={setName} autoFocus />
-            <Field
-              label="Number (optional)"
-              value={number}
-              onChangeText={setNumber}
-              keyboardType="number-pad"
-            />
-            <View style={styles.modalActions}>
-              <View style={{ flex: 1 }}>
-                <Button title="Cancel" variant="ghost" onPress={() => setAdding(false)} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Button title="Add" onPress={addOne} />
-              </View>
-            </View>
+      <BottomSheet
+        visible={adding}
+        onClose={() => setAdding(false)}
+        title="Add Player"
+      >
+        <Field label="Name" value={name} onChangeText={setName} autoFocus />
+        <Field
+          label="Number (optional)"
+          value={number}
+          onChangeText={setNumber}
+          keyboardType="number-pad"
+        />
+        <View style={styles.modalActions}>
+          <View style={{ flex: 1 }}>
+            <Button title="Cancel" variant="ghost" onPress={() => setAdding(false)} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button title="Add" onPress={addOne} />
           </View>
         </View>
-      </Modal>
+      </BottomSheet>
 
       {/* Bulk import */}
-      <Modal visible={importing} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Import Roster</Text>
-            <Text style={styles.muted}>
-              One player per line. Use "Name, Number" or "Number, Name" — number
-              is optional.
-            </Text>
-            <View style={{ height: theme.spacing(1.5) }} />
-            <Field
-              value={importText}
-              onChangeText={setImportText}
-              placeholder={'Connor McDavid, 97\nSidney Crosby, 87\nJane Smith'}
-              multiline
-              numberOfLines={8}
-              style={{ height: 160, textAlignVertical: 'top' }}
-            />
-            <View style={styles.modalActions}>
-              <View style={{ flex: 1 }}>
-                <Button title="Cancel" variant="ghost" onPress={() => setImporting(false)} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Button title="Import" onPress={doImport} />
-              </View>
-            </View>
+      <BottomSheet
+        visible={importing}
+        onClose={() => setImporting(false)}
+        title="Import Roster"
+      >
+        <Text style={styles.muted}>
+          One player per line. Use "Name, Number" or "Number, Name" — number is
+          optional.
+        </Text>
+        <View style={{ height: theme.spacing(1.5) }} />
+        <Field
+          value={importText}
+          onChangeText={setImportText}
+          placeholder={'Connor McDavid, 97\nSidney Crosby, 87\nJane Smith'}
+          multiline
+          numberOfLines={8}
+          style={{ height: 160, textAlignVertical: 'top' }}
+        />
+        <View style={styles.modalActions}>
+          <View style={{ flex: 1 }}>
+            <Button title="Cancel" variant="ghost" onPress={() => setImporting(false)} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button title="Import" onPress={doImport} />
           </View>
         </View>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
@@ -260,24 +234,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: theme.spacing(1.5),
     marginTop: theme.spacing(1),
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: theme.colors.card,
-    borderTopLeftRadius: theme.radius.lg,
-    borderTopRightRadius: theme.radius.lg,
-    padding: theme.spacing(2.5),
-    paddingBottom: theme.spacing(4),
-  },
-  modalTitle: {
-    color: theme.colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-    marginBottom: theme.spacing(1),
   },
   modalActions: {
     flexDirection: 'row',
