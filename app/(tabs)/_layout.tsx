@@ -2,7 +2,6 @@ import React from 'react';
 import { ColorValue, Text, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { theme } from '../../src/theme';
-import { NowPlayingBar } from '../../src/components/NowPlayingBar';
 
 // Emoji tab icons keep us dependency-free and read fine at a glance on the bench.
 function Icon({ glyph, color }: { glyph: string; color: ColorValue }) {
@@ -58,7 +57,6 @@ export default function TabsLayout() {
           />
         </Tabs>
       </View>
-      <NowPlayingBar />
     </View>
   );
 }

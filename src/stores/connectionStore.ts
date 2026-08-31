@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { spotify } from '../spotify/spotifyService';
-import { SPOTIFY_CONFIGURED } from '../config';
+import { appleMusic } from '../appleMusic/appleMusicService';
+import { MUSIC_CONFIGURED } from '../config';
 
 interface ConnectionState {
   connected: boolean;
@@ -20,40 +20,35 @@ export const useConnectionStore = create<ConnectionState>((set) => ({
   connected: false,
   connecting: false,
   error: undefined,
-  configured: SPOTIFY_CONFIGURED,
+  configured: MUSIC_CONFIGURED,
 
   connect: async () => {
-    if (!SPOTIFY_CONFIGURED) {
-      set({ error: 'Add your Spotify Client ID in app.json first.' });
-      return;
-    }
     set({ connecting: true, error: undefined });
     try {
-      await spotify.connect();
-      set({ connected: spotify.isConnected(), connecting: false });
+      await appleMusic.connect();
+      set({ connected: appleMusic.isConnected(), connecting: false });
     } catch (e: any) {
       set({
         connecting: false,
         connected: false,
-        error: e?.message ?? 'Could not connect to Spotify.',
+        error: e?.message ?? 'Could not connect to Apple Music.',
       });
     }
   },
 
   disconnect: async () => {
-    await spotify.disconnect();
+    await appleMusic.disconnect();
     set({ connected: false });
   },
 
   restore: async () => {
-    if (!SPOTIFY_CONFIGURED) return;
-    // Keep the UI in sync with background auto-reconnects (e.g. token expiry).
+    // Keep the UI in sync with background auth-state changes.
     if (!subscribed) {
       subscribed = true;
-      spotify.subscribe((connected) => set({ connected }));
+      appleMusic.subscribe((connected) => set({ connected }));
     }
     try {
-      const ok = await spotify.restore();
+      const ok = await appleMusic.restore();
       set({ connected: ok });
     } catch {
       set({ connected: false });

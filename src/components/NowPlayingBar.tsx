@@ -82,7 +82,7 @@ export function NowPlayingBar() {
             {song.title || 'Unknown track'}
           </Text>
           <Text style={styles.artist} numberOfLines={1}>
-            {song.artist || 'Spotify'}
+            {song.artist || 'Apple Music'}
           </Text>
         </View>
 

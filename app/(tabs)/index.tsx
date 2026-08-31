@@ -37,9 +37,9 @@ export default function GoalBoard() {
     return (
       <View style={styles.center}>
         <Text style={styles.bigEmoji}>🥅</Text>
-        <Text style={styles.centerTitle}>Connect Spotify to play</Text>
+        <Text style={styles.centerTitle}>Connect Apple Music to play</Text>
         <Text style={styles.centerText}>
-          The goal board needs a live Spotify connection to fire songs.
+          The goal board needs a live Apple Music connection to fire songs.
         </Text>
         <Button
           title="Go to Settings"

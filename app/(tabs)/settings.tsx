@@ -1,12 +1,11 @@
 import React from 'react';
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../../src/theme';
 import { useConnectionStore } from '../../src/stores/connectionStore';
 import { Button, Card } from '../../src/components/ui';
-import { SPOTIFY_REDIRECT_URI } from '../../src/config';
 
 export default function SettingsScreen() {
-  const { connected, connecting, error, configured, connect, disconnect } =
+  const { connected, connecting, error, connect, disconnect } =
     useConnectionStore();
 
   return (
@@ -20,16 +19,9 @@ export default function SettingsScreen() {
             ]}
           />
           <Text style={styles.statusText}>
-            Spotify: {connected ? 'Connected' : 'Not connected'}
+            Apple Music: {connected ? 'Connected' : 'Not connected'}
           </Text>
         </View>
-
-        {!configured && (
-          <Text style={styles.warn}>
-            No Client ID set. Add yours in app.json → expo.extra.spotifyClientId,
-            then rebuild the dev client.
-          </Text>
-        )}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -38,10 +30,9 @@ export default function SettingsScreen() {
             <Button title="Disconnect" variant="danger" onPress={disconnect} />
           ) : (
             <Button
-              title="Connect Spotify"
+              title="Connect Apple Music"
               onPress={connect}
               loading={connecting}
-              disabled={!configured}
             />
           )}
         </View>
@@ -50,37 +41,21 @@ export default function SettingsScreen() {
       <Card style={{ marginTop: theme.spacing(2) }}>
         <Text style={styles.cardTitle}>Requirements</Text>
         <Text style={styles.body}>
-          • Spotify Premium account{'\n'}
-          • The Spotify app installed and logged in on this device{'\n'}
-          • Playback controls the Spotify app, so keep it running in the
-          background during games.
+          • An active Apple Music subscription on this device{'\n'}
+          • Allow Apple Music access when prompted (Settings → Hockey Parent DJ →
+          Media & Apple Music){'\n'}
+          • The app streams the audio itself, so it controls the lock screen and
+          Control Center — no other music app needs to be running.
         </Text>
       </Card>
 
       <Card style={{ marginTop: theme.spacing(2) }}>
         <Text style={styles.cardTitle}>Fades & clip timing</Text>
         <Text style={styles.body}>
-          Fades ramp your phone's output volume (Spotify doesn't expose an
-          in-app volume control). For best results at the rink, plug the phone
-          into the PA and set the phone volume where you want the peak — fades
-          ramp up to that level.
+          Fades ramp your phone's output volume. For best results at the rink,
+          plug the phone into the PA and set the phone volume where you want the
+          peak — fades ramp up to that level.
         </Text>
-      </Card>
-
-      <Card style={{ marginTop: theme.spacing(2) }}>
-        <Text style={styles.cardTitle}>Setup reference</Text>
-        <Text style={styles.body}>Redirect URI to register in Spotify Dashboard:</Text>
-        <Text selectable style={styles.mono}>
-          {SPOTIFY_REDIRECT_URI}
-        </Text>
-        <Button
-          title="Open Spotify Developer Dashboard"
-          variant="ghost"
-          style={{ marginTop: theme.spacing(1.5) }}
-          onPress={() =>
-            Linking.openURL('https://developer.spotify.com/dashboard')
-          }
-        />
       </Card>
     </ScrollView>
   );
@@ -98,15 +73,5 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing(1),
   },
   body: { color: theme.colors.textMuted, fontSize: 14, lineHeight: 21 },
-  warn: { color: theme.colors.warning, fontSize: 14, marginTop: theme.spacing(1.5) },
   error: { color: theme.colors.danger, fontSize: 14, marginTop: theme.spacing(1.5) },
-  mono: {
-    color: theme.colors.text,
-    fontSize: 13,
-    fontFamily: 'Courier',
-    backgroundColor: theme.colors.cardAlt,
-    padding: theme.spacing(1),
-    borderRadius: theme.radius.sm,
-    marginTop: theme.spacing(0.5),
-  },
 });

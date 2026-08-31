@@ -8,24 +8,24 @@ import {
   View,
 } from 'react-native';
 import { theme } from '../theme';
-import { spotify, SpotifyTrack } from '../spotify/spotifyService';
+import { appleMusic, AppleTrack } from '../appleMusic/appleMusicService';
 import { Field } from './ui';
 
 /**
- * Live catalog search backed by the Spotify Web API. Debounces keystrokes so we
- * don't fire a request per character, and surfaces the "not connected / session
- * expired" cases as inline text rather than throwing. Tapping a result hands the
- * full track (uri, title, artist, art) back to the caller.
+ * Live catalog search backed by Apple Music (MusicKit). Debounces keystrokes so
+ * we don't fire a request per character, and surfaces the "not connected" case
+ * as inline text rather than throwing. Tapping a result hands the full track
+ * (id, title, artist, art) back to the caller.
  */
 export function TrackSearch({
   onPick,
   autoFocus,
 }: {
-  onPick: (track: SpotifyTrack) => void;
+  onPick: (track: AppleTrack) => void;
   autoFocus?: boolean;
 }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SpotifyTrack[]>([]);
+  const [results, setResults] = useState<AppleTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +45,7 @@ export function TrackSearch({
     const mine = ++seq.current;
     const handle = setTimeout(async () => {
       try {
-        const tracks = await spotify.searchTracks(q);
+        const tracks = await appleMusic.searchTracks(q);
         if (mine !== seq.current) return; // superseded
         setResults(tracks);
         setError(null);
@@ -64,7 +64,7 @@ export function TrackSearch({
   return (
     <View>
       <Field
-        label="Search Spotify"
+        label="Search Apple Music"
         value={query}
         onChangeText={setQuery}
         placeholder="Song or artist name"

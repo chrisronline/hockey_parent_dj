@@ -12,7 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.hockeyparentdj.app",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["spotify"],
+        "NSAppleMusicUsageDescription": "Hockey Parent DJ plays songs from Apple Music during games and lets you set custom start/stop points and fades.",
         "UIBackgroundModes": ["audio"]
       }
     },
@@ -31,14 +31,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-status-bar",
-      "./plugins/withSpotifyAuth"
-    ],
-    "extra": {
-      "spotifyClientId": "b473151e683d4d0d88427c55c1248041",
-      "spotifyRedirectUri": "hockeydj://callback",
-      "spotifyTokenSwapUrl": "",
-      "spotifyTokenRefreshUrl": ""
-    }
+      "expo-status-bar"
+    ]
   }
 }

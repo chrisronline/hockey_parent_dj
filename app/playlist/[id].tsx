@@ -11,10 +11,9 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { theme } from '../../src/theme';
 import { usePlaylistStore } from '../../src/stores/playlistStore';
-import { Button, Card, Field, Empty, BottomSheet } from '../../src/components/ui';
+import { Button, Card, Empty, BottomSheet } from '../../src/components/ui';
 import { SongEditor } from '../../src/components/SongEditor';
 import { TrackSearch } from '../../src/components/TrackSearch';
-import { parseTrackUri } from '../../src/spotify/uri';
 import { playback } from '../../src/playback/playbackEngine';
 import { formatMs } from '../../src/utils';
 
@@ -30,10 +29,6 @@ export default function PlaylistDetail() {
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const [pasteMode, setPasteMode] = useState(false);
-  const [uriInput, setUriInput] = useState('');
-  const [titleInput, setTitleInput] = useState('');
-  const [artistInput, setArtistInput] = useState('');
 
   if (!playlist) {
     return (
@@ -45,27 +40,6 @@ export default function PlaylistDetail() {
 
   const closeAdd = () => {
     setAdding(false);
-    setPasteMode(false);
-    setUriInput('');
-    setTitleInput('');
-    setArtistInput('');
-  };
-
-  const submitSong = () => {
-    const uri = parseTrackUri(uriInput);
-    if (!uri) {
-      Alert.alert(
-        'Invalid track',
-        'Paste a Spotify track link or URI (spotify:track:...). In Spotify: Share → Copy Song Link.'
-      );
-      return;
-    }
-    addSong(playlist.id, {
-      uri,
-      title: titleInput.trim() || 'Untitled track',
-      artist: artistInput.trim() || '',
-    });
-    closeAdd();
   };
 
   const move = (index: number, dir: -1 | 1) => {
@@ -129,7 +103,7 @@ export default function PlaylistDetail() {
         </Card>
 
         {playlist.songs.length === 0 ? (
-          <Empty text="No songs yet. Add one with a Spotify track link below." />
+          <Empty text="No songs yet. Search Apple Music below to add one." />
         ) : (
           playlist.songs.map((song, i) => (
             <Card key={song.id} style={{ marginBottom: theme.spacing(1) }}>
@@ -206,69 +180,19 @@ export default function PlaylistDetail() {
       </ScrollView>
 
       <BottomSheet visible={adding} onClose={closeAdd} title="Add Song">
-        {pasteMode ? (
-          <>
-            <Text style={styles.muted}>
-              In Spotify, tap ⋯ on a track → Share → Copy Song Link, then paste
-              it here.
-            </Text>
-            <View style={{ height: theme.spacing(2) }} />
-            <Field
-              label="Spotify link or URI"
-              value={uriInput}
-              onChangeText={setUriInput}
-              placeholder="https://open.spotify.com/track/..."
-              autoCapitalize="none"
-              autoFocus
-            />
-            <Field
-              label="Title (for your reference)"
-              value={titleInput}
-              onChangeText={setTitleInput}
-              placeholder="Song name"
-            />
-            <Field
-              label="Artist (optional)"
-              value={artistInput}
-              onChangeText={setArtistInput}
-              placeholder="Artist"
-            />
-            <View style={styles.modalActions}>
-              <View style={{ flex: 1 }}>
-                <Button
-                  title="Back to search"
-                  variant="ghost"
-                  onPress={() => setPasteMode(false)}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Button title="Add" onPress={submitSong} />
-              </View>
-            </View>
-          </>
-        ) : (
-          <>
-            <TrackSearch
-              autoFocus
-              onPick={(t) => {
-                addSong(playlist.id, {
-                  uri: t.uri,
-                  title: t.title,
-                  artist: t.artist,
-                  albumImageUrl: t.albumImageUrl,
-                  durationMs: t.durationMs,
-                });
-                closeAdd();
-              }}
-            />
-            <Button
-              title="Paste a link instead"
-              variant="ghost"
-              onPress={() => setPasteMode(true)}
-              style={{ marginTop: theme.spacing(1) }}
-            />
-          </>
-        )}
+        <TrackSearch
+          autoFocus
+          onPick={(t) => {
+            addSong(playlist.id, {
+              uri: t.uri,
+              title: t.title,
+              artist: t.artist,
+              albumImageUrl: t.albumImageUrl,
+              durationMs: t.durationMs,
+            });
+            closeAdd();
+          }}
+        />
       </BottomSheet>
     </View>
   );
@@ -307,5 +231,4 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing(1),
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  modalActions: { flexDirection: 'row', gap: theme.spacing(1.5) },
 });

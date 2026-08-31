@@ -1,9 +1,10 @@
+import { Alert } from 'react-native';
 import { VolumeManager } from 'react-native-volume-manager';
 import { Song } from '../types';
 import { shuffle } from '../utils';
-import { spotify } from '../spotify/spotifyService';
+import { appleMusic } from '../appleMusic/appleMusicService';
 
-// Fades ramp the *device output volume*. Spotify's App Remote SDK exposes no
+// Fades ramp the *device output volume*. Apple Music's player has no per-app
 // volume control, and for a rink the phone drives the PA anyway — device volume
 // is exactly what reaches the speakers, so this is the right lever.
 const FADE_TICK_MS = 50; // volume-step cadence during a ramp
@@ -116,10 +117,21 @@ class PlaybackEngine {
     if (song.fadeInMs && song.fadeInMs > 0) this.setVolume(0);
     else this.setVolume(targetVolume);
 
-    await spotify.playUri(song.uri);
-    if (token !== this.playToken) return; // superseded while awaiting
-    if (start > 0) await spotify.seek(start);
-    if (token !== this.playToken) return;
+    try {
+      if (!appleMusic.isConnected()) {
+        throw new Error('Not connected to Apple Music. Tap Connect in Settings.');
+      }
+      await appleMusic.play(song.uri);
+      if (token !== this.playToken) return; // superseded while awaiting
+      if (start > 0) await appleMusic.seek(start);
+      if (token !== this.playToken) return;
+    } catch (e: any) {
+      if (token !== this.playToken) return;
+      this.setVolume(targetVolume); // undo the fade-in pre-mute
+      this.emit({ state: 'idle' });
+      Alert.alert('Playback failed', e?.message ?? String(e));
+      return;
+    }
 
     this.emit({ state: 'playing', song, queue, index });
 
@@ -158,7 +170,7 @@ class PlaybackEngine {
     onEnded?: () => void
   ) {
     if (token !== this.playToken) return;
-    await spotify.pause();
+    await appleMusic.pause();
     this.setVolume(restoreVolume); // restore for the next clip
     this.emit({ state: 'idle' });
     onEnded?.();
@@ -185,24 +197,24 @@ class PlaybackEngine {
 
   async pause(): Promise<void> {
     this.clearTimers();
-    await spotify.pause();
+    await appleMusic.pause();
     if (this.status.state === 'playing') {
       this.emit({ ...this.status, state: 'paused' });
     }
   }
 
   async resume(): Promise<void> {
-    await spotify.resume();
+    await appleMusic.resume();
     if (this.status.state === 'paused') {
       this.emit({ ...this.status, state: 'playing' });
     }
   }
 
-  /** Hard stop: cancel everything, pause Spotify, restore volume. */
+  /** Hard stop: cancel everything, pause playback, restore volume. */
   async stop(): Promise<void> {
     this.clearTimers();
     this.playToken++; // invalidate any in-flight ramps/timers
-    await spotify.pause().catch(() => {});
+    await appleMusic.pause().catch(() => {});
     if (this.baseVolume != null) this.setVolume(this.baseVolume);
     this.emit({ state: 'idle' });
   }

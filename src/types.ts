@@ -1,14 +1,14 @@
 // Core data models for Hockey Parent DJ.
 // Everything is stored locally (AsyncStorage) — no backend in v1.
 
-/** A track pulled from Spotify plus the DJ-specific playback tweaks. */
+/** A track pulled from Apple Music plus the DJ-specific playback tweaks. */
 export interface Song {
   id: string; // local uuid
-  uri: string; // spotify:track:... — what we hand to the player
+  uri: string; // Apple Music catalog song ID — what we hand to the player
   title: string;
   artist: string;
   albumImageUrl?: string;
-  durationMs?: number; // full track length as reported by Spotify
+  durationMs?: number; // full track length as reported by Apple Music
 
   // Playback window / effects. All optional; undefined means "use natural value".
   startMs?: number; // seek here on play (default 0)
