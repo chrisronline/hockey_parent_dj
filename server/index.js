@@ -52,6 +52,16 @@ async function requestSpotifyToken(params, res) {
     });
 
     const text = await spotifyRes.text();
+    if (!spotifyRes.ok) {
+      // Log Spotify's exact rejection so we can debug auth failures. This
+      // prints the grant type and (for swaps) the redirect_uri we sent, plus
+      // Spotify's error body — never the client secret.
+      console.error(
+        `Spotify token error: grant_type=${params.grant_type} ` +
+          `redirect_uri=${params.redirect_uri ?? '(n/a)'} ` +
+          `status=${spotifyRes.status} body=${text}`
+      );
+    }
     // Relay Spotify's status + JSON verbatim so the SDK sees exactly what it
     // expects (access_token, expires_in, refresh_token, ...).
     res
@@ -102,4 +112,7 @@ app.post('/refresh', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Token server listening on port ${PORT}`);
+  // Echo the configured redirect URI so a mismatch (the usual swap failure) is
+  // obvious in the Railway logs. Client ID/secret are intentionally not logged.
+  console.log(`Configured SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI}`);
 });
