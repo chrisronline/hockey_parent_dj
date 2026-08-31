@@ -1,22 +1,33 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme, CATEGORY_COLORS } from '../../src/theme';
 import { usePlaylistStore } from '../../src/stores/playlistStore';
+import { useConnectionStore } from '../../src/stores/connectionStore';
 import {
   PLAYLIST_CATEGORIES,
   PlaylistCategory,
 } from '../../src/types';
 import { Button, Card, Field, BottomSheet } from '../../src/components/ui';
+import { generatePlaylist } from '../../src/ai/playlistAI';
+import { AI_CONFIGURED } from '../../src/config';
 
 export default function PlaylistsScreen() {
   const router = useRouter();
   const playlists = usePlaylistStore((s) => s.playlists);
   const addPlaylist = usePlaylistStore((s) => s.addPlaylist);
+  const addSong = usePlaylistStore((s) => s.addSong);
+  const connected = useConnectionStore((s) => s.connected);
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<PlaylistCategory>('Warmups');
+
+  // AI generation sheet state.
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const create = () => {
     if (!name.trim()) return;
@@ -24,6 +35,42 @@ export default function PlaylistsScreen() {
     setName('');
     setCreating(false);
     router.push(`/playlist/${pl.id}`);
+  };
+
+  const generate = async () => {
+    const prompt = aiPrompt.trim();
+    if (!prompt) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const result = await generatePlaylist(prompt);
+      if (result.songs.length === 0) {
+        setAiError(
+          'No songs could be found on Apple Music for that request. Try rephrasing.'
+        );
+        return;
+      }
+      const pl = addPlaylist(result.name, result.category);
+      result.songs.forEach((song) => addSong(pl.id, song));
+
+      // Reset + close before navigating away.
+      setAiPrompt('');
+      setAiOpen(false);
+
+      if (result.unmatched.length > 0) {
+        Alert.alert(
+          'Playlist created',
+          `Added ${result.songs.length} songs. Couldn't find ${
+            result.unmatched.length
+          } on Apple Music:\n\n${result.unmatched.join('\n')}`
+        );
+      }
+      router.push(`/playlist/${pl.id}`);
+    } catch (e: any) {
+      setAiError(e?.message ?? 'Could not generate a playlist.');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   // Group playlists under their category headers, preserving category order.
@@ -77,6 +124,17 @@ export default function PlaylistsScreen() {
       </ScrollView>
 
       <View style={styles.fabWrap}>
+        {AI_CONFIGURED && (
+          <Button
+            title="✨ Generate with AI"
+            variant="secondary"
+            onPress={() => {
+              setAiError(null);
+              setAiOpen(true);
+            }}
+            style={{ marginBottom: theme.spacing(1) }}
+          />
+        )}
         <Button title="+ New Playlist" onPress={() => setCreating(true)} />
       </View>
 
@@ -129,6 +187,55 @@ export default function PlaylistsScreen() {
             <Button title="Create" onPress={create} />
           </View>
         </View>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={aiOpen}
+        onClose={() => (aiLoading ? null : setAiOpen(false))}
+        title="Generate with AI"
+      >
+        {connected ? (
+          <>
+            <Text style={styles.aiHint}>
+              Describe the vibe and Claude will pick songs, then find them on
+              Apple Music.
+            </Text>
+            <Field
+              label="What do you want?"
+              value={aiPrompt}
+              onChangeText={setAiPrompt}
+              placeholder="e.g. high-energy warmup songs for a 10U team, clean lyrics"
+              multiline
+              editable={!aiLoading}
+              style={{ minHeight: 88, textAlignVertical: 'top' }}
+              autoFocus
+            />
+            {aiError ? <Text style={styles.aiError}>{aiError}</Text> : null}
+            <View style={styles.modalActions}>
+              <View style={{ flex: 1 }}>
+                <Button
+                  title="Cancel"
+                  variant="ghost"
+                  onPress={() => setAiOpen(false)}
+                  disabled={aiLoading}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button
+                  title="Generate"
+                  onPress={generate}
+                  loading={aiLoading}
+                  disabled={!aiPrompt.trim()}
+                />
+              </View>
+            </View>
+          </>
+        ) : (
+          <Text style={styles.aiHint}>
+            Connect to Apple Music in Settings first — the generator needs it to
+            find the songs it picks.
+          </Text>
+        )}
       </BottomSheet>
     </View>
   );
@@ -191,4 +298,15 @@ const styles = StyleSheet.create({
   },
   catChipText: { color: theme.colors.text, fontSize: 14, fontWeight: '600' },
   modalActions: { flexDirection: 'row', gap: theme.spacing(1.5) },
+  aiHint: {
+    color: theme.colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: theme.spacing(1.5),
+  },
+  aiError: {
+    color: theme.colors.danger,
+    fontSize: 13,
+    marginBottom: theme.spacing(1),
+  },
 });

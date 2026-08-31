@@ -164,7 +164,8 @@ class AppleMusicService {
     // Direct native call (not MusicKit.catalogSearch) so errors reject instead
     // of being swallowed into an empty result.
     const res = await MusicModule.catalogSearch(q, [CatalogSearchType.SONGS], {});
-    const songs = res?.songs ?? [];
+    // Native returns raw dicts (duration is a seconds string, e.g. "215.324").
+    const songs: NativeSong[] = res?.songs ?? [];
     return songs.map((s) => {
       // Native returns duration as a string of seconds (e.g. "215.324").
       const durationSec = parseFloat(String(s.duration));
@@ -180,6 +181,16 @@ class AppleMusicService {
     });
   }
 }
+
+// Shape of a song dict as returned by the native MusicModule (see
+// ios/MusicItemMapper.swift). Duration is a stringified seconds value.
+type NativeSong = {
+  id: string;
+  title: string;
+  artistName: string;
+  artworkUrl: string;
+  duration: string;
+};
 
 export type AppleTrack = {
   uri: string; // Apple Music catalog song ID

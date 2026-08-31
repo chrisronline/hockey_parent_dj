@@ -2,7 +2,7 @@
   "name": "hockey-parent-dj-token-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Spotify token swap/refresh backend for Hockey Parent DJ. Holds the client secret so the app never has to reauthorize hourly.",
+  "description": "Claude playlist backend for Hockey Parent DJ. Holds the Anthropic API key so the app can generate playlists without shipping a secret.",
   "type": "module",
   "main": "index.js",
   "engines": {
