@@ -1,0 +1,17 @@
+{
+  "name": "hockey-parent-dj-token-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Spotify token swap/refresh backend for Hockey Parent DJ. Holds the client secret so the app never has to reauthorize hourly.",
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

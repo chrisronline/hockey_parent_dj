@@ -95,6 +95,7 @@ export default function PlaylistDetail() {
       <Stack.Screen
         options={{
           title: playlist.name,
+          headerBackTitle: 'Playlists',
           headerRight: () => (
             <Pressable onPress={confirmDelete} hitSlop={12}>
               <Text style={{ color: theme.colors.danger, fontWeight: '700' }}>

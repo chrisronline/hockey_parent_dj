@@ -12,6 +12,10 @@ interface ConnectionState {
   restore: () => Promise<void>;
 }
 
+// Track whether we've wired the service->store bridge so restore() only does it
+// once, even if called again across remounts.
+let subscribed = false;
+
 export const useConnectionStore = create<ConnectionState>((set) => ({
   connected: false,
   connecting: false,
@@ -43,6 +47,11 @@ export const useConnectionStore = create<ConnectionState>((set) => ({
 
   restore: async () => {
     if (!SPOTIFY_CONFIGURED) return;
+    // Keep the UI in sync with background auto-reconnects (e.g. token expiry).
+    if (!subscribed) {
+      subscribed = true;
+      spotify.subscribe((connected) => set({ connected }));
+    }
     try {
       const ok = await spotify.restore();
       set({ connected: ok });
