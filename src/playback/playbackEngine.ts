@@ -180,19 +180,40 @@ class PlaybackEngine {
   async playPlaylist(songs: Song[], shuffleOrder: boolean): Promise<void> {
     const queue = shuffleOrder ? shuffle(songs) : [...songs];
     if (queue.length === 0) return;
+    await this.playFromQueue(queue, 0);
+  }
 
-    const playAt = async (i: number) => {
-      if (i >= queue.length) {
-        this.emit({ state: 'idle' });
-        return;
-      }
-      await this.playSong(queue[i], {
-        queue,
-        index: i,
-        onEnded: () => playAt(i + 1),
-      });
-    };
-    await playAt(0);
+  /**
+   * Play `queue[i]`, wiring its onEnded to advance to the next track. Both
+   * automatic advance (clip stop reached) and a manual next() route through
+   * here, so skipping keeps the rest of the queue auto-advancing.
+   */
+  private async playFromQueue(queue: Song[], i: number): Promise<void> {
+    if (i >= queue.length) {
+      await this.stop();
+      return;
+    }
+    await this.playSong(queue[i], {
+      queue,
+      index: i,
+      onEnded: () => this.playFromQueue(queue, i + 1),
+    });
+  }
+
+  /**
+   * Skip to the next track in the current queue. No-op when idle; stops (with
+   * volume restore) if we're already on the last track.
+   */
+  async next(): Promise<void> {
+    const s = this.status;
+    if (s.state === 'idle') return;
+    await this.playFromQueue(s.queue, s.index + 1);
+  }
+
+  /** True when there's a track after the current one to skip to. */
+  hasNext(): boolean {
+    const s = this.status;
+    return s.state !== 'idle' && s.index + 1 < s.queue.length;
   }
 
   async pause(): Promise<void> {

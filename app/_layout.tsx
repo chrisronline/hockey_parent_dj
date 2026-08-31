@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { theme } from '../src/theme';
 import { useConnectionStore } from '../src/stores/connectionStore';
-import { NowPlayingBar } from '../src/components/NowPlayingBar';
+import { NowPlaying } from '../src/components/NowPlaying';
 
 export default function RootLayout() {
   const restore = useConnectionStore((s) => s.restore);
@@ -29,9 +29,10 @@ export default function RootLayout() {
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         </Stack>
-        {/* Mounted at the root so the transport is available on every screen,
-            including the playlist detail stack route (not just the tabs). */}
-        <NowPlayingBar />
+        {/* Mounted at the root so the now-playing surface floats over every
+            screen (including the playlist detail stack route, not just tabs).
+            It takes over full-screen while playing and can minimize to a bar. */}
+        <NowPlaying />
       </View>
     </SafeAreaProvider>
   );

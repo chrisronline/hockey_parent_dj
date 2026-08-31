@@ -5,6 +5,8 @@ import { theme } from '../theme';
 import { Button, Field } from './ui';
 import { formatMs } from '../utils';
 import { playback } from '../playback/playbackEngine';
+import { suggestClip } from '../ai/clipAI';
+import { AI_CONFIGURED } from '../config';
 
 // Editor works in seconds for humans; stored values are ms.
 function toSec(ms?: number): string {
@@ -31,6 +33,40 @@ export function SongEditor({
   const [stop, setStop] = useState(toSec(song.stopMs));
   const [fadeIn, setFadeIn] = useState(toSec(song.fadeInMs));
   const [fadeOut, setFadeOut] = useState(toSec(song.fadeOutMs));
+
+  // AI clip-suggestion state.
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestNote, setSuggestNote] = useState<string | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+
+  const suggest = async () => {
+    setSuggesting(true);
+    setSuggestError(null);
+    setSuggestNote(null);
+    try {
+      const clip = await suggestClip(song);
+      // Reflect the suggestion in the fields and persist it in one go.
+      setStart(toSec(clip.startMs));
+      setStop(toSec(clip.stopMs));
+      setFadeIn(toSec(clip.fadeInMs));
+      setFadeOut(toSec(clip.fadeOutMs));
+      onChange({
+        startMs: clip.startMs,
+        stopMs: clip.stopMs,
+        fadeInMs: clip.fadeInMs,
+        fadeOutMs: clip.fadeOutMs,
+      });
+      setSuggestNote(
+        clip.reason
+          ? `Suggested ${formatMs(clip.startMs)}–${formatMs(clip.stopMs)}: ${clip.reason}`
+          : `Suggested ${formatMs(clip.startMs)}–${formatMs(clip.stopMs)}. Preview and tweak as needed.`
+      );
+    } catch (e: any) {
+      setSuggestError(e?.message ?? 'Could not suggest a clip.');
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   const commit = () => {
     onChange({
@@ -101,6 +137,21 @@ export function SongEditor({
           />
         </View>
       </View>
+      {AI_CONFIGURED && (
+        <>
+          <Button
+            title="✨ Suggest clip with AI"
+            onPress={suggest}
+            variant="secondary"
+            loading={suggesting}
+            style={{ marginBottom: theme.spacing(1) }}
+          />
+          {suggestNote ? <Text style={styles.note}>{suggestNote}</Text> : null}
+          {suggestError ? (
+            <Text style={styles.error}>{suggestError}</Text>
+          ) : null}
+        </>
+      )}
       <View style={styles.row}>
         <View style={{ flex: 1 }}>
           <Button title="▶ Preview clip" onPress={preview} variant="secondary" />
@@ -122,4 +173,15 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', gap: theme.spacing(1.5) },
   col: { flex: 1 },
+  note: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: theme.spacing(1),
+  },
+  error: {
+    color: theme.colors.danger,
+    fontSize: 12,
+    marginBottom: theme.spacing(1),
+  },
 });
