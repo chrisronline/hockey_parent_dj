@@ -125,9 +125,15 @@ class AppleMusicService {
 
   // --- Playback primitives the engine composes into songs/effects ---
 
-  /** Queue a catalog song by its Apple Music ID and start playing it. */
-  async play(catalogId: string): Promise<void> {
+  /**
+   * Queue a catalog song by its Apple Music ID and start playing it. If a
+   * `startMs` is given, we seek to it on the freshly-prepared queue *before*
+   * starting audio — so a clipped song buffers once at the right spot instead
+   * of playing from 0:00 and then re-buffering after a post-play seek.
+   */
+  async play(catalogId: string, startMs = 0): Promise<void> {
     await MusicKit.setPlaybackQueue(catalogId, MusicItem.SONG);
+    if (startMs > 0) Player.seekToTime(startMs / 1000);
     Player.play();
   }
 

@@ -121,10 +121,10 @@ class PlaybackEngine {
       if (!appleMusic.isConnected()) {
         throw new Error('Not connected to Apple Music. Tap Connect in Settings.');
       }
-      await appleMusic.play(song.uri);
+      // Pass the clip start so the seek happens before audio begins (one
+      // buffer at the right spot, no 0:00 blip + re-buffer).
+      await appleMusic.play(song.uri, start);
       if (token !== this.playToken) return; // superseded while awaiting
-      if (start > 0) await appleMusic.seek(start);
-      if (token !== this.playToken) return;
     } catch (e: any) {
       if (token !== this.playToken) return;
       this.setVolume(targetVolume); // undo the fade-in pre-mute

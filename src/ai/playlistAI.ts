@@ -1,5 +1,6 @@
 import { AI_BACKEND_URL } from '../config';
 import { appleMusic } from '../appleMusic/appleMusicService';
+import { suggestClip } from './clipAI';
 import { PLAYLIST_CATEGORIES, PlaylistCategory, Song } from '../types';
 
 // Claude picks the music (song titles + artists); Apple Music turns each pick
@@ -85,6 +86,26 @@ export async function generatePlaylist(
     }
   }
 
+  // Enrich each matched track with an AI-suggested clip window so the generated
+  // playlist is game-ready without hand-editing every song. Done concurrently;
+  // a failed suggestion just leaves that song at its natural full length.
+  const clipped = await Promise.all(
+    songs.map(async (s) => {
+      try {
+        const clip = await suggestClip(s);
+        return {
+          ...s,
+          startMs: clip.startMs,
+          stopMs: clip.stopMs,
+          fadeInMs: clip.fadeInMs,
+          fadeOutMs: clip.fadeOutMs,
+        };
+      } catch {
+        return s;
+      }
+    })
+  );
+
   const category: PlaylistCategory = PLAYLIST_CATEGORIES.includes(
     data.category as PlaylistCategory
   )
@@ -94,7 +115,7 @@ export async function generatePlaylist(
   return {
     name: data.name?.trim() || 'AI Playlist',
     category,
-    songs,
+    songs: clipped,
     unmatched,
   };
 }

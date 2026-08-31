@@ -39,13 +39,16 @@ export function NowPlaying() {
   const playing = status.state === 'playing';
   const songKey = song ? `${song.uri}:${index}` : 'idle';
 
-  // Re-expand when a fresh playback session begins (idle -> active), but not on
-  // every queue advance, so a deliberate minimize sticks through a playlist.
-  const wasIdle = useRef(true);
+  // Take over the full screen whenever a new track starts — a fresh play, a
+  // queue advance, or a manual skip. Keying on the song (not just idle->active)
+  // means skipping while minimized still pops back to the big view, which is the
+  // whole point: whatever's playing should be big and in front. Minimize still
+  // works within the current track.
+  const lastKey = useRef('idle');
   useEffect(() => {
-    if (wasIdle.current && !idle) setExpanded(true);
-    wasIdle.current = idle;
-  }, [idle]);
+    if (songKey !== 'idle' && songKey !== lastKey.current) setExpanded(true);
+    lastKey.current = songKey;
+  }, [songKey]);
 
   // Reset the clock whenever the track (or queue position) changes.
   useEffect(() => {
@@ -138,7 +141,7 @@ export function NowPlaying() {
             disabled={!canSkip}
             hitSlop={8}
           >
-            <Text style={styles.barStopText}>⏭</Text>
+            <Text style={styles.barSkipText}>▶▶</Text>
           </Pressable>
           <Pressable
             style={styles.barStopBtn}
@@ -226,7 +229,7 @@ export function NowPlaying() {
           disabled={!canSkip}
           hitSlop={8}
         >
-          <Text style={styles.stopTextLg}>⏭</Text>
+          <Text style={styles.skipTextLg}>▶▶</Text>
         </Pressable>
       </View>
     </View>
@@ -341,6 +344,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   barStopText: { color: theme.colors.text, fontSize: 18, fontWeight: '900' },
+  // Two play triangles = "next". Shrunk + negative tracking so they read as one
+  // skip glyph rather than two spaced arrows.
+  barSkipText: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: -2,
+    paddingLeft: 1,
+  },
 
   // Full-screen takeover
   fullWrap: {
@@ -429,5 +441,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stopTextLg: { color: theme.colors.text, fontSize: 26, fontWeight: '900' },
+  skipTextLg: {
+    color: theme.colors.text,
+    fontSize: 19,
+    fontWeight: '900',
+    letterSpacing: -3,
+    paddingLeft: 2,
+  },
   disabled: { opacity: 0.3 },
 });

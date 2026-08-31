@@ -197,8 +197,9 @@ export default function PlaylistsScreen() {
         {connected ? (
           <>
             <Text style={styles.aiHint}>
-              Describe the vibe and Claude will pick songs, then find them on
-              Apple Music.
+              Describe the vibe and Claude will pick songs, find them on Apple
+              Music, and suggest a hype-clip start/stop for each. Give it a few
+              seconds.
             </Text>
             <Field
               label="What do you want?"
