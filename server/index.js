@@ -160,7 +160,7 @@ app.post('/generate-playlist', async (req, res) => {
       },
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,
-        max_tokens: 2048,
+        max_tokens: 4096,
         system: SYSTEM_PROMPT,
         tools: [PLAYLIST_TOOL],
         tool_choice: { type: 'tool', name: 'build_playlist' },

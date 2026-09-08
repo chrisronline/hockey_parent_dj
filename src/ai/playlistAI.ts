@@ -32,7 +32,7 @@ export type GeneratedPlaylist = {
  */
 export async function generatePlaylist(
   prompt: string,
-  count = 15
+  count = 30
 ): Promise<GeneratedPlaylist> {
   if (!AI_BACKEND_URL) {
     throw new Error('AI backend URL is not configured (app.json → extra.aiBackendUrl).');
