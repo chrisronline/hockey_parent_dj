@@ -126,13 +126,22 @@ class AppleMusicService {
   // --- Playback primitives the engine composes into songs/effects ---
 
   /**
-   * Queue a catalog song by its Apple Music ID and start playing it. If a
-   * `startMs` is given, we seek to it on the freshly-prepared queue *before*
-   * starting audio — so a clipped song buffers once at the right spot instead
-   * of playing from 0:00 and then re-buffering after a post-play seek.
+   * Queue a catalog song by its Apple Music ID and start playing it, seeking to
+   * `startMs` if a clip start is given.
+   *
+   * We call the native MusicModule.setPlaybackQueue directly instead of
+   * MusicKit.setPlaybackQueue: the library wrapper catches native errors, logs
+   * them, and *resolves anyway*. So if a track fails to prepare, the queue is
+   * left empty/unprepared, the failure is invisible, and the subsequent
+   * Player.play() throws `MPMusicPlayerControllerErrorDomain Code=1` with no
+   * audio. The direct call rejects, so the engine surfaces the real reason.
+   *
+   * Seek order: set playbackTime on the prepared (not-yet-playing) queue and
+   * *then* play — the order MusicKit documents. Seeking after play() races the
+   * async play() and can itself trigger the Code=1 failure above.
    */
   async play(catalogId: string, startMs = 0): Promise<void> {
-    await MusicKit.setPlaybackQueue(catalogId, MusicItem.SONG);
+    await MusicModule.setPlaybackQueue(catalogId, MusicItem.SONG);
     if (startMs > 0) Player.seekToTime(startMs / 1000);
     Player.play();
   }
@@ -170,21 +179,84 @@ class AppleMusicService {
     // Direct native call (not MusicKit.catalogSearch) so errors reject instead
     // of being swallowed into an empty result.
     const res = await MusicModule.catalogSearch(q, [CatalogSearchType.SONGS], {});
-    // Native returns raw dicts (duration is a seconds string, e.g. "215.324").
     const songs: NativeSong[] = res?.songs ?? [];
-    return songs.map((s) => {
-      // Native returns duration as a string of seconds (e.g. "215.324").
-      const durationSec = parseFloat(String(s.duration));
-      return {
-        uri: s.id,
-        title: s.title || 'Untitled track',
-        artist: s.artistName || '',
-        albumImageUrl: s.artworkUrl ? s.artworkUrl : undefined,
-        durationMs: Number.isFinite(durationSec)
-          ? Math.round(durationSec * 1000)
-          : undefined,
-      };
-    });
+    return songs.map((s) => this.toTrack(s));
+  }
+
+  // --- Library playlist import ---
+
+  /**
+   * List the user's Apple Music library playlists. Like searchTracks, we call
+   * the native module directly (not MusicKit.getUserPlaylists) because the
+   * library swallows native errors into an empty list — indistinguishable from
+   * "you have no playlists". A direct call rejects so the UI can say why.
+   */
+  async getUserPlaylists(): Promise<ApplePlaylist[]> {
+    if (!this.connected) throw new Error('Connect to Apple Music first.');
+
+    // The native side loads each playlist's tracks to report an accurate count,
+    // so keep the limit reasonable — most users have well under 100.
+    const res = await MusicModule.getUserPlaylists({ limit: 100 });
+    const playlists: NativePlaylist[] = res?.playlists ?? [];
+    return playlists.map((p) => ({
+      id: p.id,
+      name: p.name || 'Untitled playlist',
+      trackCount: typeof p.trackCount === 'number' ? p.trackCount : 0,
+      artworkUrl: p.artworkUrl ? p.artworkUrl : undefined,
+    }));
+  }
+
+  /**
+   * Fetch the songs of one library playlist as AppleTracks, re-resolving each to
+   * a real catalog track for playback.
+   *
+   * Library-playlist songs come back with *library* identifiers. Some are
+   * prefixed ("i."/"l."/"p."), but matched/purchased songs often have bare,
+   * catalog-looking numeric IDs that are still library-namespace — not valid
+   * catalog resource IDs. Either way, playing them fails: MusicKit's
+   * MusicCatalogResourceRequest can't fetch a library ID ("MusicDataRequest.Error
+   * error 1"), and the "i."-prefixed ones hit an equally broken library path. A
+   * plain catalog search by title+artist, by contrast, yields an ID that plays
+   * reliably (it's the exact path manual "Add Song" uses). So we unconditionally
+   * re-resolve every imported song to its catalog match and store that ID,
+   * keeping the library song's own title/artist/art/duration for display. If no
+   * catalog match is found we keep the original ID so the song is still imported
+   * (it may not play, but the user can see and fix it) rather than silently
+   * dropped.
+   */
+  async getPlaylistSongs(playlistId: string): Promise<AppleTrack[]> {
+    if (!this.connected) throw new Error('Connect to Apple Music first.');
+
+    const res = await MusicModule.getPlaylistSongs(playlistId, {});
+    const songs: NativeSong[] = res?.songs ?? [];
+    const tracks = songs.map((s) => this.toTrack(s));
+
+    return Promise.all(
+      tracks.map(async (t) => {
+        try {
+          const matches = await this.searchTracks(`${t.title} ${t.artist}`.trim());
+          if (matches[0]) return { ...t, uri: matches[0].uri };
+        } catch {
+          // Keep the original ID as a fallback (see note above).
+        }
+        return t;
+      })
+    );
+  }
+
+  /** Map a native song dict to our AppleTrack shape (shared by search + import). */
+  private toTrack(s: NativeSong): AppleTrack {
+    // Native returns duration as a string of seconds (e.g. "215.324").
+    const durationSec = parseFloat(String(s.duration));
+    return {
+      uri: s.id,
+      title: s.title || 'Untitled track',
+      artist: s.artistName || '',
+      albumImageUrl: s.artworkUrl ? s.artworkUrl : undefined,
+      durationMs: Number.isFinite(durationSec)
+        ? Math.round(durationSec * 1000)
+        : undefined,
+    };
   }
 }
 
@@ -198,12 +270,29 @@ type NativeSong = {
   duration: string;
 };
 
+// Shape of a playlist dict as returned by the native MusicModule (see
+// ios/MusicItemMapper.swift → map(_ playlist:)).
+type NativePlaylist = {
+  id: string;
+  name: string;
+  description: string;
+  artworkUrl: string;
+  trackCount: number;
+};
+
 export type AppleTrack = {
   uri: string; // Apple Music catalog song ID
   title: string;
   artist: string;
   albumImageUrl?: string;
   durationMs?: number;
+};
+
+export type ApplePlaylist = {
+  id: string; // Apple Music library playlist ID
+  name: string;
+  trackCount: number;
+  artworkUrl?: string;
 };
 
 export const appleMusic = new AppleMusicService();

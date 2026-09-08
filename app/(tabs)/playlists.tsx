@@ -9,8 +9,10 @@ import {
   PlaylistCategory,
 } from '../../src/types';
 import { Button, Card, Field, BottomSheet } from '../../src/components/ui';
+import { PlaylistImport } from '../../src/components/PlaylistImport';
 import { generatePlaylist } from '../../src/ai/playlistAI';
 import { AI_CONFIGURED } from '../../src/config';
+import { appleMusic, ApplePlaylist } from '../../src/appleMusic/appleMusicService';
 
 export default function PlaylistsScreen() {
   const router = useRouter();
@@ -28,6 +30,10 @@ export default function PlaylistsScreen() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  // Apple Music import sheet state.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const create = () => {
     if (!name.trim()) return;
@@ -70,6 +76,35 @@ export default function PlaylistsScreen() {
       setAiError(e?.message ?? 'Could not generate a playlist.');
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const importPlaylist = async (source: ApplePlaylist) => {
+    setImporting(true);
+    try {
+      const tracks = await appleMusic.getPlaylistSongs(source.id);
+      if (tracks.length === 0) {
+        Alert.alert('Nothing to import', `"${source.name}" has no songs.`);
+        return;
+      }
+      // Imported songs land Uncategorized — the user can recategorize and set
+      // clip/fade per song from the playlist detail screen.
+      const pl = addPlaylist(source.name, 'Uncategorized');
+      tracks.forEach((t) =>
+        addSong(pl.id, {
+          uri: t.uri,
+          title: t.title,
+          artist: t.artist,
+          albumImageUrl: t.albumImageUrl,
+          durationMs: t.durationMs,
+        })
+      );
+      setImportOpen(false);
+      router.push(`/playlist/${pl.id}`);
+    } catch (e: any) {
+      Alert.alert('Import failed', e?.message ?? 'Could not import that playlist.');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -124,6 +159,12 @@ export default function PlaylistsScreen() {
       </ScrollView>
 
       <View style={styles.fabWrap}>
+        <Button
+          title="⬇ Import from Apple Music"
+          variant="secondary"
+          onPress={() => setImportOpen(true)}
+          style={{ marginBottom: theme.spacing(1) }}
+        />
         {AI_CONFIGURED && (
           <Button
             title="✨ Generate with AI"
@@ -235,6 +276,27 @@ export default function PlaylistsScreen() {
           <Text style={styles.aiHint}>
             Connect to Apple Music in Settings first — the generator needs it to
             find the songs it picks.
+          </Text>
+        )}
+      </BottomSheet>
+
+      <BottomSheet
+        visible={importOpen}
+        onClose={() => (importing ? null : setImportOpen(false))}
+        title="Import from Apple Music"
+      >
+        {connected ? (
+          <>
+            <Text style={styles.aiHint}>
+              Pick one of your Apple Music playlists to copy its songs in. Set
+              clip start/stop and fades per song afterward.
+            </Text>
+            <PlaylistImport onPick={importPlaylist} busy={importing} />
+          </>
+        ) : (
+          <Text style={styles.aiHint}>
+            Connect to Apple Music in Settings first — importing reads the
+            playlists in your library.
           </Text>
         )}
       </BottomSheet>

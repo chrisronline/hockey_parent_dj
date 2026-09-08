@@ -16,6 +16,8 @@ import { SongEditor } from '../../src/components/SongEditor';
 import { TrackSearch } from '../../src/components/TrackSearch';
 import { playback } from '../../src/playback/playbackEngine';
 import { formatMs } from '../../src/utils';
+import { suggestClip } from '../../src/ai/clipAI';
+import { AI_CONFIGURED } from '../../src/config';
 
 export default function PlaylistDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -29,6 +31,10 @@ export default function PlaylistDetail() {
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+
+  // Batch AI clip generation across every song in the playlist.
+  const [clipping, setClipping] = useState(false);
+  const [clipDone, setClipDone] = useState(0);
 
   if (!playlist) {
     return (
@@ -62,6 +68,42 @@ export default function PlaylistDetail() {
         },
       },
     ]);
+  };
+
+  const generateAllClips = async () => {
+    const songs = playlist.songs;
+    if (songs.length === 0) return;
+    setClipping(true);
+    setClipDone(0);
+    let done = 0;
+    let failed = 0;
+    // Fire concurrently — matches the AI generate flow, which also suggests
+    // clips for every song at once.
+    await Promise.all(
+      songs.map(async (s) => {
+        try {
+          const clip = await suggestClip(s);
+          updateSong(playlist.id, s.id, {
+            startMs: clip.startMs,
+            stopMs: clip.stopMs,
+            fadeInMs: clip.fadeInMs,
+            fadeOutMs: clip.fadeOutMs,
+          });
+        } catch {
+          failed += 1;
+        } finally {
+          done += 1;
+          setClipDone(done);
+        }
+      })
+    );
+    setClipping(false);
+    if (failed > 0) {
+      Alert.alert(
+        'Clips generated',
+        `Set clips for ${songs.length - failed} of ${songs.length} songs. ${failed} couldn't be suggested — try those individually.`
+      );
+    }
   };
 
   return (
@@ -100,6 +142,19 @@ export default function PlaylistDetail() {
             disabled={playlist.songs.length === 0}
             style={{ marginTop: theme.spacing(1.5) }}
           />
+          {AI_CONFIGURED && playlist.songs.length > 0 && (
+            <Button
+              title={
+                clipping
+                  ? `Generating clips ${clipDone}/${playlist.songs.length}…`
+                  : '✨ Generate clips for all songs'
+              }
+              variant="secondary"
+              onPress={generateAllClips}
+              disabled={clipping}
+              style={{ marginTop: theme.spacing(1) }}
+            />
+          )}
         </Card>
 
         {playlist.songs.length === 0 ? (
