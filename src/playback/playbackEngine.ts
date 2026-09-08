@@ -3,6 +3,7 @@ import { VolumeManager } from 'react-native-volume-manager';
 import { Song } from '../types';
 import { shuffle } from '../utils';
 import { appleMusic } from '../appleMusic/appleMusicService';
+import { useSessionStore } from '../stores/sessionStore';
 
 // Fades ramp the *device output volume*. Apple Music's player has no per-app
 // volume control, and for a rink the phone drives the PA anyway — device volume
@@ -11,8 +12,8 @@ const FADE_TICK_MS = 50; // volume-step cadence during a ramp
 
 export type PlaybackStatus =
   | { state: 'idle' }
-  | { state: 'playing'; song: Song; queue: Song[]; index: number }
-  | { state: 'paused'; song: Song; queue: Song[]; index: number };
+  | { state: 'playing'; song: Song; queue: Song[]; index: number; compact: boolean }
+  | { state: 'paused'; song: Song; queue: Song[]; index: number; compact: boolean };
 
 type Listener = (status: PlaybackStatus) => void;
 
@@ -99,13 +100,22 @@ class PlaybackEngine {
    */
   async playSong(
     song: Song,
-    opts?: { queue?: Song[]; index?: number; onEnded?: () => void }
+    opts?: {
+      queue?: Song[];
+      index?: number;
+      onEnded?: () => void;
+      // Goal songs fire from the goal board / roster and should stay in the
+      // compact bar rather than taking over the whole screen. Defaults to the
+      // full-screen takeover used for playlist playback.
+      compact?: boolean;
+    }
   ): Promise<void> {
     this.clearTimers();
     const token = ++this.playToken;
 
     const queue = opts?.queue ?? [song];
     const index = opts?.index ?? 0;
+    const compact = opts?.compact ?? false;
 
     // Remember the user's volume once so repeated clips don't drift downward.
     if (this.baseVolume == null) this.baseVolume = await this.getVolume();
@@ -133,7 +143,11 @@ class PlaybackEngine {
       return;
     }
 
-    this.emit({ state: 'playing', song, queue, index });
+    this.emit({ state: 'playing', song, queue, index, compact });
+
+    // Mark this track as played this game so the UI can flag repeats. Keyed by
+    // uri (the actual track), set here — only once audio has actually started.
+    useSessionStore.getState().markPlayed(song.uri);
 
     if (song.fadeInMs && song.fadeInMs > 0) {
       this.ramp(0, targetVolume, song.fadeInMs);

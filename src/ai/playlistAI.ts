@@ -2,6 +2,7 @@ import { AI_BACKEND_URL } from '../config';
 import { appleMusic } from '../appleMusic/appleMusicService';
 import { suggestClip } from './clipAI';
 import { PLAYLIST_CATEGORIES, PlaylistCategory, Song } from '../types';
+import { mapPool, retry } from '../utils';
 
 // Claude picks the music (song titles + artists); Apple Music turns each pick
 // into a playable catalog track. The backend holds the Anthropic key so nothing
@@ -32,7 +33,8 @@ export type GeneratedPlaylist = {
  */
 export async function generatePlaylist(
   prompt: string,
-  count = 30
+  count = 30,
+  category?: PlaylistCategory
 ): Promise<GeneratedPlaylist> {
   if (!AI_BACKEND_URL) {
     throw new Error('AI backend URL is not configured (app.json → extra.aiBackendUrl).');
@@ -86,35 +88,42 @@ export async function generatePlaylist(
     }
   }
 
-  // Enrich each matched track with an AI-suggested clip window so the generated
-  // playlist is game-ready without hand-editing every song. Done concurrently;
-  // a failed suggestion just leaves that song at its natural full length.
-  const clipped = await Promise.all(
-    songs.map(async (s) => {
-      try {
-        const clip = await suggestClip(s);
-        return {
-          ...s,
-          startMs: clip.startMs,
-          stopMs: clip.stopMs,
-          fadeInMs: clip.fadeInMs,
-          fadeOutMs: clip.fadeOutMs,
-        };
-      } catch {
-        return s;
-      }
-    })
-  );
+  // Warmup songs are meant to play long, so we skip auto-clipping them — they
+  // keep their natural full length. Every other category gets an AI-suggested
+  // hype-clip window so the playlist is game-ready without hand-editing.
+  const skipClips = category === 'Warmups';
 
-  const category: PlaylistCategory = PLAYLIST_CATEGORIES.includes(
-    data.category as PlaylistCategory
-  )
-    ? (data.category as PlaylistCategory)
-    : 'Uncategorized';
+  // Enrich each matched track with a clip window. Run a few at a time with
+  // retries rather than all at once — a large playlist would otherwise blow past
+  // the backend's rate limit and lose most suggestions. A failed suggestion just
+  // leaves that song at its natural full length.
+  const clipped = skipClips
+    ? songs
+    : await mapPool(songs, 4, async (s) => {
+        try {
+          const clip = await retry(() => suggestClip(s));
+          return {
+            ...s,
+            startMs: clip.startMs,
+            stopMs: clip.stopMs,
+            fadeInMs: clip.fadeInMs,
+            fadeOutMs: clip.fadeOutMs,
+          };
+        } catch {
+          return s;
+        }
+      });
+
+  // Prefer the category the user picked; fall back to Claude's guess, then Uncategorized.
+  const resolvedCategory: PlaylistCategory =
+    category ??
+    (PLAYLIST_CATEGORIES.includes(data.category as PlaylistCategory)
+      ? (data.category as PlaylistCategory)
+      : 'Uncategorized');
 
   return {
     name: data.name?.trim() || 'AI Playlist',
-    category,
+    category: resolvedCategory,
     songs: clipped,
     unmatched,
   };

@@ -14,6 +14,9 @@ import { Button, Card, Field, Empty, BottomSheet } from '../../src/components/ui
 import { SongEditor } from '../../src/components/SongEditor';
 import { TrackSearch } from '../../src/components/TrackSearch';
 import { playback } from '../../src/playback/playbackEngine';
+import { suggestClip } from '../../src/ai/clipAI';
+import { mapPool, retry } from '../../src/utils';
+import { AI_CONFIGURED } from '../../src/config';
 
 export default function RosterScreen() {
   const { players, addPlayer, updatePlayer, removePlayer, assignSong, importRoster } =
@@ -25,6 +28,48 @@ export default function RosterScreen() {
   const [name, setName] = useState('');
   const [number, setNumber] = useState('');
   const [importText, setImportText] = useState('');
+
+  // Batch AI clip generation across every player's goal song.
+  const [clipping, setClipping] = useState(false);
+  const [clipDone, setClipDone] = useState(0);
+
+  const withSongs = players.filter((p) => p.song);
+
+  const generateAllGoalClips = async () => {
+    if (withSongs.length === 0) return;
+    setClipping(true);
+    setClipDone(0);
+    let failed = 0;
+    // A few at a time with retries — same throttling as the playlist batch, so a
+    // big roster doesn't blow past the backend's rate limit and lose most clips.
+    await mapPool(
+      withSongs,
+      4,
+      async (p) => {
+        if (!p.song) return;
+        try {
+          const clip = await retry(() => suggestClip(p.song!));
+          assignSong(p.id, {
+            ...p.song,
+            startMs: clip.startMs,
+            stopMs: clip.stopMs,
+            fadeInMs: clip.fadeInMs,
+            fadeOutMs: clip.fadeOutMs,
+          });
+        } catch {
+          failed += 1;
+        }
+      },
+      (done) => setClipDone(done)
+    );
+    setClipping(false);
+    if (failed > 0) {
+      Alert.alert(
+        'Clips generated',
+        `Set clips for ${withSongs.length - failed} of ${withSongs.length} goal songs. ${failed} couldn't be suggested — open those players and tap "Suggest clip" to retry.`
+      );
+    }
+  };
 
   const addOne = () => {
     if (!name.trim()) return;
@@ -68,7 +113,11 @@ export default function RosterScreen() {
                     style={styles.playBtn}
                     onPress={() =>
                       p.song &&
-                      playback.playSong(p.song, { queue: [p.song], index: 0 })
+                      playback.playSong(p.song, {
+                        queue: [p.song],
+                        index: 0,
+                        compact: true,
+                      })
                     }
                   >
                     <Text style={styles.playText}>▶</Text>
@@ -78,6 +127,29 @@ export default function RosterScreen() {
 
               {expanded === p.id && (
                 <View style={styles.assignArea}>
+                  <View style={styles.editRow}>
+                    <View style={{ flex: 3 }}>
+                      <Field
+                        label="Name"
+                        value={p.name}
+                        onChangeText={(t) => updatePlayer(p.id, { name: t })}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Field
+                        label="Number"
+                        value={p.number ?? ''}
+                        onChangeText={(t) =>
+                          updatePlayer(p.id, { number: t.trim() || undefined })
+                        }
+                        keyboardType="number-pad"
+                      />
+                    </View>
+                  </View>
+
+                  <Text style={styles.sectionLabel}>
+                    {p.song ? 'Change goal song' : 'Assign goal song'}
+                  </Text>
                   <TrackSearch
                     onPick={(t) =>
                       assignSong(p.id, {
@@ -125,6 +197,20 @@ export default function RosterScreen() {
               )}
             </Card>
           ))
+        )}
+
+        {AI_CONFIGURED && withSongs.length > 0 && (
+          <Button
+            title={
+              clipping
+                ? `Generating clips ${clipDone}/${withSongs.length}…`
+                : '✨ Generate clips for all goal songs'
+            }
+            variant="secondary"
+            onPress={generateAllGoalClips}
+            disabled={clipping}
+            style={{ marginTop: theme.spacing(1) }}
+          />
         )}
 
         <View style={styles.actions}>
@@ -228,6 +314,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     paddingTop: theme.spacing(1.5),
+  },
+  editRow: { flexDirection: 'row', gap: theme.spacing(1.5) },
+  sectionLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: theme.spacing(0.5),
+    marginBottom: theme.spacing(0.5),
   },
   rowBtns: { flexDirection: 'row', gap: theme.spacing(1), marginTop: theme.spacing(1) },
   actions: {

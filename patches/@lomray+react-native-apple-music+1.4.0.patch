@@ -1,0 +1,104 @@
+diff --git a/node_modules/@lomray/react-native-apple-music/ios/CatalogService.swift b/node_modules/@lomray/react-native-apple-music/ios/CatalogService.swift
+index e3f6577..4904e69 100644
+--- a/node_modules/@lomray/react-native-apple-music/ios/CatalogService.swift
++++ b/node_modules/@lomray/react-native-apple-music/ios/CatalogService.swift
+@@ -53,6 +53,18 @@ final class CatalogService {
+     return response.items.first
+   }
+ 
++  /// Fetch many catalog songs at once by their catalog IDs. Used to enrich
++  /// imported library songs with real catalog artwork (a library song's own
++  /// artwork often has no https URL and comes back blank). One request for the
++  /// whole set rather than one per song. Returns the mapped dicts in whatever
++  /// order the catalog returns them; callers key by "id" to merge.
++  func fetchSongs(ids: [MusicItemID]) async throws -> [[String: Any]] {
++    guard !ids.isEmpty else { return [] }
++    let request = MusicCatalogResourceRequest<Song>(matching: \.id, memberOf: ids)
++    let response = try await request.response()
++    return response.items.map(MusicItemMapper.map)
++  }
++
+   func fetchAlbum(id: MusicItemID) async throws -> Album? {
+     let request = MusicCatalogResourceRequest<Album>(matching: \.id, equalTo: id)
+     let response = try await request.response()
+diff --git a/node_modules/@lomray/react-native-apple-music/ios/MusicItemMapper.swift b/node_modules/@lomray/react-native-apple-music/ios/MusicItemMapper.swift
+index fd92ce8..e38ea92 100644
+--- a/node_modules/@lomray/react-native-apple-music/ios/MusicItemMapper.swift
++++ b/node_modules/@lomray/react-native-apple-music/ios/MusicItemMapper.swift
+@@ -11,6 +11,12 @@ enum MusicItemMapper {
+   static func map(_ song: Song) -> [String: Any] {
+     [
+       "id": String(describing: song.id),
++      // The catalog ID of the corresponding Apple Music catalog track. For a
++      // library song this differs from `id` (a library identifier); it's the
++      // real, playable catalog ID, so consumers can play the exact same song
++      // without re-matching by title/artist. Empty when unavailable (e.g. a
++      // personal upload with no catalog equivalent).
++      "catalogId": extractCatalogId(song.playParameters),
+       "title": song.title,
+       "artistName": song.artistName,
+       "artworkUrl": extractArtworkURL(song.artwork),
+@@ -18,6 +24,22 @@ enum MusicItemMapper {
+     ]
+   }
+ 
++  /// Pull the catalog ID out of a song's play parameters. MusicKit gives no
++  /// direct catalogID on a library Song, but its `playParameters` raw JSON
++  /// carries a "catalogId" for any library track that has a catalog equivalent.
++  private static func extractCatalogId(_ params: PlayParameters?) -> String {
++    guard let params = params,
++          let data = try? JSONEncoder().encode(params),
++          let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
++    else {
++      return ""
++    }
++    if let catalogId = dict["catalogId"] as? String { return catalogId }
++    // Purchased (non-subscription) tracks expose it under a different key.
++    if let purchasedId = dict["purchasedId"] as? String { return purchasedId }
++    return ""
++  }
++
+   // MARK: - Album
+ 
+   static func map(_ album: Album) -> [String: Any] {
+diff --git a/node_modules/@lomray/react-native-apple-music/ios/MusicModule.m b/node_modules/@lomray/react-native-apple-music/ios/MusicModule.m
+index 3ec62e2..3be2a3d 100644
+--- a/node_modules/@lomray/react-native-apple-music/ios/MusicModule.m
++++ b/node_modules/@lomray/react-native-apple-music/ios/MusicModule.m
+@@ -13,6 +13,8 @@ @interface RCT_EXTERN_MODULE(MusicModule, RCTEventEmitter)
+ 
+ RCT_EXTERN_METHOD(catalogSearch:(NSString *)term types:(NSArray<NSString *> *)types options:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+ 
++RCT_EXTERN_METHOD(getCatalogSongs:(NSArray<NSString *> *)ids resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
++
+ RCT_EXTERN_METHOD(setPlaybackQueue:(NSString *)itemId type:(NSString *)type resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+ 
+ RCT_EXTERN_METHOD(getTracksFromLibrary:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+diff --git a/node_modules/@lomray/react-native-apple-music/ios/MusicModule.swift b/node_modules/@lomray/react-native-apple-music/ios/MusicModule.swift
+index 6c1b18c..be8e596 100644
+--- a/node_modules/@lomray/react-native-apple-music/ios/MusicModule.swift
++++ b/node_modules/@lomray/react-native-apple-music/ios/MusicModule.swift
+@@ -238,6 +238,23 @@ final class MusicModule: RCTEventEmitter {
+     }
+   }
+ 
++  @objc(getCatalogSongs:resolver:rejecter:)
++  func getCatalogSongs(
++    _ ids: [String],
++    resolver resolve: @escaping RCTPromiseResolveBlock,
++    rejecter reject: @escaping RCTPromiseRejectBlock
++  ) {
++    let itemIds = ids.map { MusicItemID($0) }
++    Task.detached { [catalogService] in
++      do {
++        let songs = try await catalogService.fetchSongs(ids: itemIds)
++        resolve(["songs": songs])
++      } catch {
++        reject("ERROR", "Failed to fetch catalog songs: \(error)", error as NSError)
++      }
++    }
++  }
++
+   // MARK: - Queue Management
+ 
+   @objc(setPlaybackQueue:type:resolver:rejecter:)

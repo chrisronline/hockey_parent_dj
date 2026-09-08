@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,11 +12,12 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { theme } from '../../src/theme';
 import { usePlaylistStore } from '../../src/stores/playlistStore';
+import { useSessionStore } from '../../src/stores/sessionStore';
 import { Button, Card, Empty, BottomSheet } from '../../src/components/ui';
 import { SongEditor } from '../../src/components/SongEditor';
 import { TrackSearch } from '../../src/components/TrackSearch';
 import { playback } from '../../src/playback/playbackEngine';
-import { formatMs } from '../../src/utils';
+import { formatMs, mapPool, retry } from '../../src/utils';
 import { suggestClip } from '../../src/ai/clipAI';
 import { AI_CONFIGURED } from '../../src/config';
 
@@ -28,6 +30,10 @@ export default function PlaylistDetail() {
   );
   const { updatePlaylist, removePlaylist, addSong, updateSong, removeSong, reorderSongs } =
     usePlaylistStore();
+
+  // Which songs have already been played this game (keyed by track uri).
+  const played = useSessionStore((s) => s.played);
+  const resetPlayed = useSessionStore((s) => s.resetPlayed);
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -46,6 +52,20 @@ export default function PlaylistDetail() {
 
   const closeAdd = () => {
     setAdding(false);
+  };
+
+  // How many songs in this playlist have already been played this game.
+  const playedCount = playlist.songs.filter((s) => played[s.uri]).length;
+
+  const newGame = () => {
+    Alert.alert(
+      'Start a new game?',
+      'This clears the "played" markers across all playlists so you start fresh.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset', style: 'destructive', onPress: resetPlayed },
+      ]
+    );
   };
 
   const move = (index: number, dir: -1 | 1) => {
@@ -75,14 +95,16 @@ export default function PlaylistDetail() {
     if (songs.length === 0) return;
     setClipping(true);
     setClipDone(0);
-    let done = 0;
     let failed = 0;
-    // Fire concurrently — matches the AI generate flow, which also suggests
-    // clips for every song at once.
-    await Promise.all(
-      songs.map(async (s) => {
+    // Run a few at a time with retries. Firing all N requests at once (a large
+    // playlist can be 90+) blows past the backend's rate limit, so most get
+    // throttled and dropped — the reason a big batch only completed ~25 of 92.
+    await mapPool(
+      songs,
+      4,
+      async (s) => {
         try {
-          const clip = await suggestClip(s);
+          const clip = await retry(() => suggestClip(s));
           updateSong(playlist.id, s.id, {
             startMs: clip.startMs,
             stopMs: clip.stopMs,
@@ -91,17 +113,15 @@ export default function PlaylistDetail() {
           });
         } catch {
           failed += 1;
-        } finally {
-          done += 1;
-          setClipDone(done);
         }
-      })
+      },
+      (done) => setClipDone(done)
     );
     setClipping(false);
     if (failed > 0) {
       Alert.alert(
         'Clips generated',
-        `Set clips for ${songs.length - failed} of ${songs.length} songs. ${failed} couldn't be suggested — try those individually.`
+        `Set clips for ${songs.length - failed} of ${songs.length} songs. ${failed} couldn't be suggested — open those songs and tap the clip button to retry.`
       );
     }
   };
@@ -155,23 +175,54 @@ export default function PlaylistDetail() {
               style={{ marginTop: theme.spacing(1) }}
             />
           )}
+          {playedCount > 0 && (
+            <View style={styles.playedRow}>
+              <Text style={styles.muted}>
+                {playedCount} of {playlist.songs.length} played this game
+              </Text>
+              <Pressable onPress={newGame} hitSlop={8}>
+                <Text style={styles.newGameText}>New game</Text>
+              </Pressable>
+            </View>
+          )}
         </Card>
 
         {playlist.songs.length === 0 ? (
           <Empty text="No songs yet. Search Apple Music below to add one." />
         ) : (
-          playlist.songs.map((song, i) => (
-            <Card key={song.id} style={{ marginBottom: theme.spacing(1) }}>
+          playlist.songs.map((song, i) => {
+            const isPlayed = !!played[song.uri];
+            return (
+            <Card
+              key={song.id}
+              style={{
+                marginBottom: theme.spacing(1),
+                opacity: isPlayed ? 0.55 : 1,
+              }}
+            >
               <View style={styles.songRow}>
+                {song.albumImageUrl ? (
+                  <Image
+                    source={{ uri: song.albumImageUrl }}
+                    style={styles.art}
+                  />
+                ) : (
+                  <View style={[styles.art, styles.artPlaceholder]}>
+                    <Text style={styles.artPlaceholderText}>🎵</Text>
+                  </View>
+                )}
                 <Pressable
                   style={{ flex: 1 }}
                   onPress={() =>
                     setExpanded(expanded === song.id ? null : song.id)
                   }
                 >
-                  <Text style={styles.songTitle} numberOfLines={1}>
-                    {song.title}
-                  </Text>
+                  <View style={styles.titleRow}>
+                    <Text style={styles.songTitle} numberOfLines={1}>
+                      {song.title}
+                    </Text>
+                    {isPlayed && <Text style={styles.playedPill}>✓ Played</Text>}
+                  </View>
                   <Text style={styles.muted} numberOfLines={1}>
                     {song.artist || 'Tap to edit clip & fades'}
                     {song.startMs || song.stopMs
@@ -223,7 +274,8 @@ export default function PlaylistDetail() {
                 </View>
               )}
             </Card>
-          ))
+            );
+          })
         )}
 
         <Button
@@ -263,7 +315,24 @@ const styles = StyleSheet.create({
   },
   controlLabel: { color: theme.colors.text, fontSize: 16, fontWeight: '700' },
   songRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(1) },
-  songTitle: { color: theme.colors.text, fontSize: 16, fontWeight: '700' },
+  art: { width: 44, height: 44, borderRadius: 6, backgroundColor: theme.colors.border },
+  artPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  artPlaceholderText: { fontSize: 20 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(1) },
+  songTitle: { color: theme.colors.text, fontSize: 16, fontWeight: '700', flexShrink: 1 },
+  playedPill: {
+    color: theme.colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  playedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: theme.spacing(1.5),
+  },
+  newGameText: { color: theme.colors.primary, fontSize: 14, fontWeight: '700' },
   muted: { color: theme.colors.textMuted, fontSize: 13 },
   iconBtn: {
     width: 44,

@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { theme } from '../theme';
 import { usePlayback } from '../playback/usePlayback';
 import { playback } from '../playback/playbackEngine';
@@ -23,6 +24,14 @@ export function NowPlaying() {
   const status = usePlayback();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const router = useRouter();
+
+  // Jump to the goal board mid-playlist (e.g. a goal is scored). Minimizing to
+  // the bar first keeps the song going and hands the screen back to the board.
+  const goToGoalBoard = () => {
+    setExpanded(false);
+    router.navigate('/');
+  };
 
   // Full-screen by default; minimizing drops to the compact bar.
   const [expanded, setExpanded] = useState(true);
@@ -37,6 +46,9 @@ export function NowPlaying() {
   const song = idle ? undefined : status.song;
   const index = idle ? 0 : status.index;
   const playing = status.state === 'playing';
+  // Goal songs (goal board / roster) play "compact": they stay in the bar rather
+  // than taking over the screen.
+  const compact = status.state === 'idle' ? false : status.compact;
   const songKey = song ? `${song.uri}:${index}` : 'idle';
 
   // Take over the full screen whenever a new track starts — a fresh play, a
@@ -46,9 +58,10 @@ export function NowPlaying() {
   // works within the current track.
   const lastKey = useRef('idle');
   useEffect(() => {
-    if (songKey !== 'idle' && songKey !== lastKey.current) setExpanded(true);
+    // Compact (goal) songs drop straight to the bar; everything else takes over.
+    if (songKey !== 'idle' && songKey !== lastKey.current) setExpanded(!compact);
     lastKey.current = songKey;
-  }, [songKey]);
+  }, [songKey, compact]);
 
   // Reset the clock whenever the track (or queue position) changes.
   useEffect(() => {
@@ -181,7 +194,9 @@ export function NowPlaying() {
             {positionLabel}
           </Text>
         </View>
-        <View style={styles.minimizeBtn} />
+        <Pressable style={styles.goalBoardBtn} onPress={goToGoalBoard} hitSlop={8}>
+          <Text style={styles.goalBoardText}>🥅 Board</Text>
+        </Pressable>
       </View>
 
       <View style={styles.fullBody}>
@@ -383,6 +398,20 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     lineHeight: 34,
   },
+  goalBoardBtn: {
+    height: 44,
+    paddingHorizontal: theme.spacing(1.5),
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goalBoardText: {
+    color: theme.colors.primary,
+    fontSize: 14,
+    fontWeight: '800',
+  },
   fullBody: {
     flex: 1,
     alignItems: 'center',
@@ -418,16 +447,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing(2),
   },
   playBtnLg: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   playTextLg: {
     color: theme.colors.primaryText,
-    fontSize: 40,
+    fontSize: 56,
     fontWeight: '900',
   },
   stopBtnLg: {

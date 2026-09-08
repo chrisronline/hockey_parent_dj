@@ -207,40 +207,79 @@ class AppleMusicService {
   }
 
   /**
-   * Fetch the songs of one library playlist as AppleTracks, re-resolving each to
-   * a real catalog track for playback.
+   * Fetch the songs of one library playlist as AppleTracks, using each song's
+   * real catalog ID for playback.
    *
-   * Library-playlist songs come back with *library* identifiers. Some are
-   * prefixed ("i."/"l."/"p."), but matched/purchased songs often have bare,
-   * catalog-looking numeric IDs that are still library-namespace — not valid
-   * catalog resource IDs. Either way, playing them fails: MusicKit's
-   * MusicCatalogResourceRequest can't fetch a library ID ("MusicDataRequest.Error
-   * error 1"), and the "i."-prefixed ones hit an equally broken library path. A
-   * plain catalog search by title+artist, by contrast, yields an ID that plays
-   * reliably (it's the exact path manual "Add Song" uses). So we unconditionally
-   * re-resolve every imported song to its catalog match and store that ID,
-   * keeping the library song's own title/artist/art/duration for display. If no
-   * catalog match is found we keep the original ID so the song is still imported
-   * (it may not play, but the user can see and fix it) rather than silently
-   * dropped.
+   * A library song's own `id` is a *library* identifier the player can't fetch
+   * (MusicCatalogResourceRequest throws "MusicDataRequest.Error error 1" → no
+   * audio). But the native mapper also gives us `catalogId`: the catalog ID of
+   * the exact same track, which plays reliably (the same path manual "Add Song"
+   * uses). So we play that directly — no title/artist re-matching, no wrong
+   * versions. We only fall back to a catalog search when a song has no catalog
+   * counterpart (e.g. a personal upload / iTunes Match with no match), and keep
+   * the original ID if even that finds nothing so the song is still imported.
    */
   async getPlaylistSongs(playlistId: string): Promise<AppleTrack[]> {
     if (!this.connected) throw new Error('Connect to Apple Music first.');
 
     const res = await MusicModule.getPlaylistSongs(playlistId, {});
     const songs: NativeSong[] = res?.songs ?? [];
-    const tracks = songs.map((s) => this.toTrack(s));
 
-    return Promise.all(
-      tracks.map(async (t) => {
+    const tracks = await Promise.all(
+      songs.map(async (s) => {
+        const track = this.toTrack(s);
+        if (s.catalogId) return { ...track, uri: s.catalogId };
         try {
-          const matches = await this.searchTracks(`${t.title} ${t.artist}`.trim());
-          if (matches[0]) return { ...t, uri: matches[0].uri };
+          const matches = await this.searchTracks(
+            `${track.title} ${track.artist}`.trim()
+          );
+          if (matches[0]) return matches[0];
         } catch {
-          // Keep the original ID as a fallback (see note above).
+          // Keep the original ID as a last-resort fallback (see note above).
         }
-        return t;
+        return track;
       })
+    );
+
+    // A library song's own artwork usually has no https URL, so imported tracks
+    // come back with no album art. Now that each track carries its real catalog
+    // ID, fetch the catalog songs (one batched request) and borrow their proper
+    // https artwork. Best-effort: if the fetch fails, keep whatever we had.
+    return this.fillCatalogArtwork(tracks);
+  }
+
+  /**
+   * Fill in missing album art from the Apple Music catalog, keyed by catalog ID.
+   * Only touches tracks that currently have no artwork, so search/AI matches
+   * (which already carry good art) are left untouched.
+   */
+  private async fillCatalogArtwork(tracks: AppleTrack[]): Promise<AppleTrack[]> {
+    const idsNeedingArt = Array.from(
+      new Set(tracks.filter((t) => !t.albumImageUrl && t.uri).map((t) => t.uri))
+    );
+    if (idsNeedingArt.length === 0) return tracks;
+
+    const artById = new Map<string, string>();
+    // Catalog resource requests cap how many IDs they'll take at once, so fetch
+    // in chunks. Failures are non-fatal — we just leave those tracks art-less.
+    const CHUNK = 25;
+    for (let i = 0; i < idsNeedingArt.length; i += CHUNK) {
+      const chunk = idsNeedingArt.slice(i, i + CHUNK);
+      try {
+        const res = await MusicModule.getCatalogSongs(chunk);
+        for (const s of (res?.songs ?? []) as NativeSong[]) {
+          if (s.artworkUrl) artById.set(s.id, s.artworkUrl);
+        }
+      } catch {
+        // Leave this chunk without artwork.
+      }
+    }
+
+    if (artById.size === 0) return tracks;
+    return tracks.map((t) =>
+      !t.albumImageUrl && artById.has(t.uri)
+        ? { ...t, albumImageUrl: artById.get(t.uri) }
+        : t
     );
   }
 
@@ -264,6 +303,10 @@ class AppleMusicService {
 // ios/MusicItemMapper.swift). Duration is a stringified seconds value.
 type NativeSong = {
   id: string;
+  // Catalog ID of the corresponding Apple Music catalog track. For a library
+  // song this differs from `id` (a library identifier) and is the real, playable
+  // ID. Empty string when the song has no catalog counterpart.
+  catalogId?: string;
   title: string;
   artistName: string;
   artworkUrl: string;

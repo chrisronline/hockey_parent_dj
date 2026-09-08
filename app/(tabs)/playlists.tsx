@@ -28,6 +28,7 @@ export default function PlaylistsScreen() {
   // AI generation sheet state.
   const [aiOpen, setAiOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
+  const [aiCategory, setAiCategory] = useState<PlaylistCategory>('Warmups');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
@@ -49,14 +50,14 @@ export default function PlaylistsScreen() {
     setAiLoading(true);
     setAiError(null);
     try {
-      const result = await generatePlaylist(prompt);
+      const result = await generatePlaylist(prompt, 30, aiCategory);
       if (result.songs.length === 0) {
         setAiError(
           'No songs could be found on Apple Music for that request. Try rephrasing.'
         );
         return;
       }
-      const pl = addPlaylist(result.name, result.category);
+      const pl = addPlaylist(result.name, aiCategory);
       result.songs.forEach((song) => addSong(pl.id, song));
 
       // Reset + close before navigating away.
@@ -252,6 +253,32 @@ export default function PlaylistsScreen() {
               style={{ minHeight: 88, textAlignVertical: 'top' }}
               autoFocus
             />
+            <Text style={styles.label}>Category</Text>
+            <View style={styles.catRow}>
+              {PLAYLIST_CATEGORIES.map((c) => (
+                <Pressable
+                  key={c}
+                  onPress={() => setAiCategory(c)}
+                  disabled={aiLoading}
+                  style={[
+                    styles.catChip,
+                    aiCategory === c && {
+                      backgroundColor: CATEGORY_COLORS[c],
+                      borderColor: CATEGORY_COLORS[c],
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.catChipText,
+                      aiCategory === c && { color: theme.colors.bg },
+                    ]}
+                  >
+                    {c}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
             {aiError ? <Text style={styles.aiError}>{aiError}</Text> : null}
             <View style={styles.modalActions}>
               <View style={{ flex: 1 }}>
