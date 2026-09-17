@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -9,13 +9,13 @@ import {
 } from 'react-native';
 import { theme } from '../theme';
 import { appleMusic, AppleTrack } from '../appleMusic/appleMusicService';
-import { Field } from './ui';
+import { Button, Field } from './ui';
 
 /**
- * Live catalog search backed by Apple Music (MusicKit). Debounces keystrokes so
- * we don't fire a request per character, and surfaces the "not connected" case
- * as inline text rather than throwing. Tapping a result hands the full track
- * (id, title, artist, art) back to the caller.
+ * Catalog search backed by Apple Music (MusicKit). Search runs only when you
+ * tap Search (or hit the keyboard's search key) — no per-keystroke requests —
+ * and surfaces the "not connected" case as inline text rather than throwing.
+ * Tapping a result hands the full track (id, title, artist, art) back.
  */
 export function TrackSearch({
   onPick,
@@ -28,38 +28,32 @@ export function TrackSearch({
   const [results, setResults] = useState<AppleTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The query the current results belong to, so the "no matches" line only
+  // shows after an actual search (not while typing a fresh query).
+  const [searched, setSearched] = useState('');
 
-  // Cancel stale responses: only the latest query's results should win.
+  // Drop stale responses: only the latest search's results should win.
   const seq = useRef(0);
 
-  useEffect(() => {
+  const runSearch = async () => {
     const q = query.trim();
-    if (!q) {
-      setResults([]);
-      setError(null);
-      setLoading(false);
-      return;
-    }
-
+    if (!q) return;
     setLoading(true);
+    setError(null);
+    setSearched(q);
     const mine = ++seq.current;
-    const handle = setTimeout(async () => {
-      try {
-        const tracks = await appleMusic.searchTracks(q);
-        if (mine !== seq.current) return; // superseded
-        setResults(tracks);
-        setError(null);
-      } catch (e: any) {
-        if (mine !== seq.current) return;
-        setResults([]);
-        setError(e?.message ?? 'Search failed.');
-      } finally {
-        if (mine === seq.current) setLoading(false);
-      }
-    }, 350);
-
-    return () => clearTimeout(handle);
-  }, [query]);
+    try {
+      const tracks = await appleMusic.searchTracks(q);
+      if (mine !== seq.current) return; // superseded
+      setResults(tracks);
+    } catch (e: any) {
+      if (mine !== seq.current) return;
+      setResults([]);
+      setError(e?.message ?? 'Search failed.');
+    } finally {
+      if (mine === seq.current) setLoading(false);
+    }
+  };
 
   return (
     <View>
@@ -72,6 +66,13 @@ export function TrackSearch({
         autoCorrect={false}
         autoFocus={autoFocus}
         returnKeyType="search"
+        onSubmitEditing={runSearch}
+      />
+      <Button
+        title="Search"
+        onPress={runSearch}
+        disabled={!query.trim() || loading}
+        style={{ marginBottom: theme.spacing(1.5) }}
       />
 
       {loading && (
@@ -82,8 +83,8 @@ export function TrackSearch({
 
       {error && <Text style={styles.error}>{error}</Text>}
 
-      {!loading && !error && query.trim().length > 0 && results.length === 0 && (
-        <Text style={styles.muted}>No matches.</Text>
+      {!loading && !error && searched.length > 0 && results.length === 0 && (
+        <Text style={styles.muted}>No matches for “{searched}”.</Text>
       )}
 
       {results.map((t) => (

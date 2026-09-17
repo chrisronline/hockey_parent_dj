@@ -31,6 +31,7 @@ export default function PlaylistsScreen() {
   const [aiOpen, setAiOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiCategory, setAiCategory] = useState<PlaylistCategory>('Warmups');
+  const [aiCount, setAiCount] = useState('30');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
@@ -53,10 +54,12 @@ export default function PlaylistsScreen() {
   const generate = async () => {
     const prompt = aiPrompt.trim();
     if (!prompt) return;
+    // Clamp to a sane range so a blank/garbage field can't ask for 0 or 500.
+    const count = Math.max(1, Math.min(100, parseInt(aiCount, 10) || 30));
     setAiLoading(true);
     setAiError(null);
     try {
-      const result = await generatePlaylist(prompt, 30, aiCategory);
+      const result = await generatePlaylist(prompt, count, aiCategory);
       if (result.songs.length === 0) {
         setAiError(
           'No songs could be found on Apple Music for that request. Try rephrasing.'
@@ -94,8 +97,8 @@ export default function PlaylistsScreen() {
         Alert.alert('Nothing to import', `"${source.name}" has no songs.`);
         return;
       }
-      // Imported songs land Uncategorized — the user can recategorize and set
-      // clip/fade per song from the playlist detail screen.
+      // Imported playlists land Uncategorized; move them into a section and
+      // tune song clips/fades from the playlist detail screen afterward.
       const pl = addPlaylist(source.name, 'Uncategorized');
       tracks.forEach((t) =>
         addSong(pl.id, {
@@ -304,6 +307,14 @@ export default function PlaylistsScreen() {
               style={{ minHeight: 88, textAlignVertical: 'top' }}
               autoFocus
             />
+            <Field
+              label="How many songs?"
+              value={aiCount}
+              onChangeText={setAiCount}
+              placeholder="30"
+              keyboardType="number-pad"
+              editable={!aiLoading}
+            />
             <Text style={styles.label}>Category</Text>
             <View style={styles.catRow}>
               {PLAYLIST_CATEGORIES.map((c) => (
@@ -366,8 +377,9 @@ export default function PlaylistsScreen() {
         {connected ? (
           <>
             <Text style={styles.aiHint}>
-              Pick one of your Apple Music playlists to copy its songs in. Set
-              clip start/stop and fades per song afterward.
+              Pick one of your Apple Music playlists to copy its songs in. It
+              lands Uncategorized — open it to move it into a section and set
+              clip start/stop and fades per song.
             </Text>
             <PlaylistImport onPick={importPlaylist} busy={importing} />
           </>

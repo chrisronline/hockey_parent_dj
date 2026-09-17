@@ -10,7 +10,8 @@ import {
   View,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { theme } from '../../src/theme';
+import { theme, CATEGORY_COLORS } from '../../src/theme';
+import { PLAYLIST_CATEGORIES } from '../../src/types';
 import { usePlaylistStore } from '../../src/stores/playlistStore';
 import { useSessionStore } from '../../src/stores/sessionStore';
 import { useIntermissionStore } from '../../src/stores/intermissionStore';
@@ -181,6 +182,31 @@ export default function PlaylistDetail() {
       />
       <ScrollView contentContainerStyle={styles.content}>
         <Card style={styles.controlsCard}>
+          <Text style={styles.catLabel}>Category</Text>
+          <View style={styles.catRow}>
+            {PLAYLIST_CATEGORIES.map((c) => (
+              <Pressable
+                key={c}
+                onPress={() => updatePlaylist(playlist.id, { category: c })}
+                style={[
+                  styles.catChip,
+                  playlist.category === c && {
+                    backgroundColor: CATEGORY_COLORS[c],
+                    borderColor: CATEGORY_COLORS[c],
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.catChipText,
+                    playlist.category === c && { color: theme.colors.bg },
+                  ]}
+                >
+                  {c}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
           <View style={styles.shuffleRow}>
             <View>
               <Text style={styles.controlLabel}>Shuffle order</Text>
@@ -387,6 +413,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   controlLabel: { color: theme.colors.text, fontSize: 16, fontWeight: '700' },
+  catLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  catRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1),
+    marginBottom: theme.spacing(2),
+  },
+  catChip: {
+    paddingHorizontal: theme.spacing(1.5),
+    paddingVertical: theme.spacing(1),
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardAlt,
+  },
+  catChipText: { color: theme.colors.text, fontSize: 14, fontWeight: '600' },
   songRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(1) },
   art: { width: 44, height: 44, borderRadius: 6, backgroundColor: theme.colors.border },
   artPlaceholder: { alignItems: 'center', justifyContent: 'center' },
