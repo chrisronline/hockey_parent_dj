@@ -13,6 +13,8 @@ import { PlaylistImport } from '../../src/components/PlaylistImport';
 import { generatePlaylist } from '../../src/ai/playlistAI';
 import { AI_CONFIGURED } from '../../src/config';
 import { appleMusic, ApplePlaylist } from '../../src/appleMusic/appleMusicService';
+import { playback } from '../../src/playback/playbackEngine';
+import { Playlist } from '../../src/types';
 
 export default function PlaylistsScreen() {
   const router = useRouter();
@@ -35,6 +37,10 @@ export default function PlaylistsScreen() {
   // Apple Music import sheet state.
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+
+  // The "+" FAB opens this little menu of add actions, keeping the game-day
+  // list uncluttered instead of a stack of full-width buttons at the bottom.
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const create = () => {
     if (!name.trim()) return;
@@ -109,6 +115,20 @@ export default function PlaylistsScreen() {
     }
   };
 
+  // Fire a random song from a playlist without opening it — for mid-game "just
+  // play something from this list" moments. Plays the whole list shuffled in
+  // the mini-bar, so the first song is random and Next keeps pulling another,
+  // all without leaving the playlists view.
+  const playRandom = (p: Playlist) => {
+    if (p.songs.length === 0) return;
+    playback.playPlaylist(p.songs, true, {
+      compact: true,
+      // Intermission lists remember their spot no matter how they were started,
+      // so the "Resume last played" button works after a random start too.
+      intermissionPlaylistId: p.category === 'Intermission' ? p.id : undefined,
+    });
+  };
+
   // Group playlists under their category headers, preserving category order.
   const grouped = PLAYLIST_CATEGORIES.map((cat) => ({
     category: cat,
@@ -150,6 +170,15 @@ export default function PlaylistsScreen() {
                         {p.shuffle ? ' · shuffle' : ''}
                       </Text>
                     </View>
+                    {p.songs.length > 0 && (
+                      <Pressable
+                        style={styles.diceBtn}
+                        onPress={() => playRandom(p)}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.diceText}>🎲</Text>
+                      </Pressable>
+                    )}
                     <Text style={styles.chevron}>›</Text>
                   </Card>
                 </Pressable>
@@ -159,26 +188,48 @@ export default function PlaylistsScreen() {
         )}
       </ScrollView>
 
-      <View style={styles.fabWrap}>
+      <Pressable
+        style={styles.fab}
+        onPress={() => setMenuOpen(true)}
+        hitSlop={8}
+      >
+        <Text style={styles.fabGlyph}>＋</Text>
+      </Pressable>
+
+      <BottomSheet
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        title="Add a playlist"
+      >
+        <Button
+          title="+ New Playlist"
+          onPress={() => {
+            setMenuOpen(false);
+            setCreating(true);
+          }}
+        />
         <Button
           title="⬇ Import from Apple Music"
           variant="secondary"
-          onPress={() => setImportOpen(true)}
-          style={{ marginBottom: theme.spacing(1) }}
+          onPress={() => {
+            setMenuOpen(false);
+            setImportOpen(true);
+          }}
+          style={{ marginTop: theme.spacing(1) }}
         />
         {AI_CONFIGURED && (
           <Button
             title="✨ Generate with AI"
             variant="secondary"
             onPress={() => {
+              setMenuOpen(false);
               setAiError(null);
               setAiOpen(true);
             }}
-            style={{ marginBottom: theme.spacing(1) }}
+            style={{ marginTop: theme.spacing(1) }}
           />
         )}
-        <Button title="+ New Playlist" onPress={() => setCreating(true)} />
-      </View>
+      </BottomSheet>
 
       <BottomSheet
         visible={creating}
@@ -332,7 +383,7 @@ export default function PlaylistsScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: theme.spacing(1.5), paddingBottom: theme.spacing(12) },
+  content: { padding: theme.spacing(1.5), paddingBottom: theme.spacing(10) },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -353,6 +404,18 @@ const styles = StyleSheet.create({
   plName: { color: theme.colors.text, fontSize: 17, fontWeight: '700' },
   plMeta: { color: theme.colors.textMuted, fontSize: 13, marginTop: 2 },
   chevron: { color: theme.colors.textMuted, fontSize: 28, fontWeight: '300' },
+  diceBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.cardAlt,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.spacing(1),
+  },
+  diceText: { fontSize: 20 },
   emptyTitle: {
     color: theme.colors.text,
     fontSize: 17,
@@ -360,11 +423,27 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   emptyText: { color: theme.colors.textMuted, fontSize: 14 },
-  fabWrap: {
+  fab: {
     position: 'absolute',
-    left: theme.spacing(2),
     right: theme.spacing(2),
     bottom: theme.spacing(2),
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  fabGlyph: {
+    color: theme.colors.primaryText,
+    fontSize: 30,
+    fontWeight: '900',
+    lineHeight: 32,
   },
   label: {
     color: theme.colors.textMuted,

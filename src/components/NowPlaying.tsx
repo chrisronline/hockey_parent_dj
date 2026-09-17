@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Image,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -45,6 +46,8 @@ export function NowPlaying() {
   const idle = status.state === 'idle';
   const song = idle ? undefined : status.song;
   const index = idle ? 0 : status.index;
+  // Where the audio actually began (a clip start, or a resume point partway in).
+  const startPositionMs = idle ? 0 : status.startPositionMs;
   const playing = status.state === 'playing';
   // Goal songs (goal board / roster) play "compact": they stay in the bar rather
   // than taking over the screen.
@@ -63,12 +66,13 @@ export function NowPlaying() {
     lastKey.current = songKey;
   }, [songKey, compact]);
 
-  // Reset the clock whenever the track (or queue position) changes.
+  // Reset the clock whenever the track (or queue position) changes, or we seek
+  // to a new position (startPositionMs jumps) — so a scrub reseeds cleanly.
   useEffect(() => {
     accRef.current = 0;
     segStartRef.current = null;
     setElapsed(0);
-  }, [songKey]);
+  }, [songKey, startPositionMs]);
 
   // Run the ticking clock while playing; bank the segment on pause/change.
   useEffect(() => {
@@ -87,16 +91,68 @@ export function NowPlaying() {
       clearInterval(id);
       setElapsed(accRef.current);
     };
-  }, [playing, songKey]);
+  }, [playing, songKey, startPositionMs]);
+
+  // --- Scrubbing (full-screen progress bar) ---
+  // While dragging, seekFrac (0..1) previews the target; on release we commit a
+  // seek. Geometry lives in a ref updated each render so the PanResponder below
+  // can be created once and still read current values.
+  const [seekFrac, setSeekFrac] = useState<number | null>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
+  const seekMeta = useRef({
+    width: 0,
+    clipStart: 0,
+    total: undefined as number | undefined,
+  });
+
+  const updateSeek = useCallback((x: number) => {
+    const { width } = seekMeta.current;
+    if (width > 0) setSeekFrac(Math.max(0, Math.min(1, x / width)));
+  }, []);
+  const commitSeek = useCallback((x: number) => {
+    const { width, clipStart, total } = seekMeta.current;
+    if (width > 0 && total != null) {
+      const frac = Math.max(0, Math.min(1, x / width));
+      playback.seekTo(clipStart + frac * total);
+    }
+    setSeekFrac(null);
+  }, []);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => updateSeek(e.nativeEvent.locationX),
+      onPanResponderMove: (e) => updateSeek(e.nativeEvent.locationX),
+      onPanResponderRelease: (e) => commitSeek(e.nativeEvent.locationX),
+      onPanResponderTerminate: () => setSeekFrac(null),
+    })
+  ).current;
 
   if (idle || !song) return null;
 
   const start = song.startMs ?? 0;
   const end = song.stopMs ?? song.durationMs;
   const clipLength = end != null && end > start ? end - start : undefined;
+  // On a resume we seek partway into the clip, so seed the clock with how far
+  // in we started; `elapsed` (from 0) then ticks on top of it.
+  const offset = Math.max(0, startPositionMs - start);
+  const played = offset + elapsed;
   const shownElapsed =
-    clipLength != null ? Math.min(elapsed, clipLength) : elapsed;
-  const progress = clipLength ? Math.min(1, elapsed / clipLength) : 0;
+    clipLength != null ? Math.min(played, clipLength) : played;
+  const progress = clipLength ? Math.min(1, played / clipLength) : 0;
+
+  // Feed current geometry to the scrub handlers, and derive what the big bar
+  // shows (the drag preview while scrubbing, otherwise live playback).
+  seekMeta.current = {
+    width: trackWidth,
+    clipStart: start,
+    total: clipLength ?? song.durationMs,
+  };
+  const scrubbing = seekFrac != null;
+  const scrubProgress = scrubbing ? (seekFrac as number) : progress;
+  const scrubElapsedMs =
+    scrubbing && clipLength != null ? (seekFrac as number) * clipLength : shownElapsed;
 
   const queue = status.queue;
   const hasQueue = queue.length > 1;
@@ -224,7 +280,28 @@ export function NowPlaying() {
           {song.artist || 'Apple Music'}
         </Text>
 
-        <View style={styles.fullProgressWrap}>{ProgressBar}</View>
+        <View style={styles.fullProgressWrap}>
+          <View style={styles.progressRow}>
+            <Text style={styles.time}>{formatMs(scrubElapsedMs)}</Text>
+            <View
+              style={styles.seekTouch}
+              onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+              {...panResponder.panHandlers}
+            >
+              <View style={styles.seekTrack}>
+                <View
+                  style={[styles.seekFill, { width: `${scrubProgress * 100}%` }]}
+                />
+                <View
+                  style={[styles.seekKnob, { left: `${scrubProgress * 100}%` }]}
+                />
+              </View>
+            </View>
+            <Text style={styles.time}>
+              {clipLength != null ? formatMs(clipLength) : '--:--'}
+            </Text>
+          </View>
+        </View>
       </View>
 
       <View style={styles.fullControls}>
@@ -439,6 +516,37 @@ const styles = StyleSheet.create({
   fullProgressWrap: {
     alignSelf: 'stretch',
     marginTop: theme.spacing(3),
+  },
+  // Tall, transparent touch area so the thin visual bar is easy to grab/drag.
+  seekTouch: {
+    flex: 1,
+    height: 40,
+    justifyContent: 'center',
+  },
+  seekTrack: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: theme.colors.cardAlt,
+    justifyContent: 'center',
+  },
+  seekFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 5,
+    backgroundColor: theme.colors.primary,
+  },
+  seekKnob: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginLeft: -12,
+    top: -7,
+    backgroundColor: theme.colors.primary,
+    borderWidth: 3,
+    borderColor: theme.colors.bg,
   },
   fullControls: {
     flexDirection: 'row',

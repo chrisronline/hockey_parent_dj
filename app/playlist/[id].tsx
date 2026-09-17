@@ -13,6 +13,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { theme } from '../../src/theme';
 import { usePlaylistStore } from '../../src/stores/playlistStore';
 import { useSessionStore } from '../../src/stores/sessionStore';
+import { useIntermissionStore } from '../../src/stores/intermissionStore';
 import { Button, Card, Empty, BottomSheet } from '../../src/components/ui';
 import { SongEditor } from '../../src/components/SongEditor';
 import { TrackSearch } from '../../src/components/TrackSearch';
@@ -35,6 +36,9 @@ export default function PlaylistDetail() {
   const played = useSessionStore((s) => s.played);
   const resetPlayed = useSessionStore((s) => s.resetPlayed);
 
+  // Saved "pick up where we left off" spot for this (intermission) playlist.
+  const resume = useIntermissionStore((s) => (id ? s.resumes[id] : undefined));
+
   const [expanded, setExpanded] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -56,6 +60,40 @@ export default function PlaylistDetail() {
 
   // How many songs in this playlist have already been played this game.
   const playedCount = playlist.songs.filter((s) => played[s.uri]).length;
+
+  // Does any song carry a clip window or fade? Gates the "clear clips" action.
+  const clippedCount = playlist.songs.filter(
+    (s) =>
+      s.startMs != null ||
+      s.stopMs != null ||
+      s.fadeInMs != null ||
+      s.fadeOutMs != null
+  ).length;
+
+  // Wipe every song's clip window + fades so each plays start-to-finish. Handy
+  // for warmup-style lists where the full track is wanted, or to redo clips.
+  const clearAllClips = () => {
+    Alert.alert(
+      'Remove all clips?',
+      `Every song in "${playlist.name}" will play full-length (clip start/stop and fades cleared).`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove clips',
+          style: 'destructive',
+          onPress: () =>
+            playlist.songs.forEach((s) =>
+              updateSong(playlist.id, s.id, {
+                startMs: undefined,
+                stopMs: undefined,
+                fadeInMs: undefined,
+                fadeOutMs: undefined,
+              })
+            ),
+        },
+      ]
+    );
+  };
 
   const newGame = () => {
     Alert.alert(
@@ -158,10 +196,37 @@ export default function PlaylistDetail() {
           </View>
           <Button
             title={`▶ Play ${playlist.shuffle ? '(shuffled)' : 'in order'}`}
-            onPress={() => playback.playPlaylist(playlist.songs, playlist.shuffle)}
+            onPress={() =>
+              playback.playPlaylist(
+                playlist.songs,
+                playlist.shuffle,
+                // Intermission lists remember where they left off so you can
+                // resume next intermission (see the Resume button below).
+                playlist.category === 'Intermission'
+                  ? { intermissionPlaylistId: playlist.id }
+                  : undefined
+              )
+            }
             disabled={playlist.songs.length === 0}
             style={{ marginTop: theme.spacing(1.5) }}
           />
+          {playlist.category === 'Intermission' && (
+            // Always shown on intermission lists so the feature is discoverable;
+            // disabled until there's a saved spot to pick up from.
+            <Button
+              title={
+                resume
+                  ? `▶ Resume — ${resume.songTitle} (${formatMs(
+                      resume.positionMs
+                    )})`
+                  : '▶ Resume last played (nothing saved yet)'
+              }
+              variant="secondary"
+              onPress={() => resume && playback.resumeIntermission(resume)}
+              disabled={!resume}
+              style={{ marginTop: theme.spacing(1) }}
+            />
+          )}
           {AI_CONFIGURED && playlist.songs.length > 0 && (
             <Button
               title={
@@ -172,6 +237,14 @@ export default function PlaylistDetail() {
               variant="secondary"
               onPress={generateAllClips}
               disabled={clipping}
+              style={{ marginTop: theme.spacing(1) }}
+            />
+          )}
+          {clippedCount > 0 && (
+            <Button
+              title="Remove all clips"
+              variant="ghost"
+              onPress={clearAllClips}
               style={{ marginTop: theme.spacing(1) }}
             />
           )}
