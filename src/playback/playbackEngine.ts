@@ -468,6 +468,21 @@ class PlaybackEngine {
   getStatus() {
     return this.status;
   }
+
+  /**
+   * Live absolute position (ms) within the currently-loaded song, or null when
+   * idle. Lets the clip editor capture "the spot you just heard" as a start/stop
+   * — far more precise than dragging a tiny bar across a whole track.
+   */
+  positionMs(): number | null {
+    if (this.status.state === 'idle') return null;
+    return Math.max(0, Math.round(this.currentPositionMs()));
+  }
+
+  /** URI of the song currently loaded (playing or paused), or null when idle. */
+  currentSongUri(): string | null {
+    return this.status.state === 'idle' ? null : this.status.song.uri;
+  }
 }
 
 export const playback = new PlaybackEngine();

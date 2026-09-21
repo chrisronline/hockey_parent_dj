@@ -15,8 +15,7 @@ import { PLAYLIST_CATEGORIES } from '../../src/types';
 import { usePlaylistStore } from '../../src/stores/playlistStore';
 import { useSessionStore } from '../../src/stores/sessionStore';
 import { useIntermissionStore } from '../../src/stores/intermissionStore';
-import { Button, Card, Empty, BottomSheet } from '../../src/components/ui';
-import { SongEditor } from '../../src/components/SongEditor';
+import { Button, Card, Empty, BottomSheet, Field } from '../../src/components/ui';
 import { TrackSearch } from '../../src/components/TrackSearch';
 import { playback } from '../../src/playback/playbackEngine';
 import { formatMs, mapPool, retry } from '../../src/utils';
@@ -43,6 +42,10 @@ export default function PlaylistDetail() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
+  // Editable name. Kept as a local draft so typing doesn't fight the store on
+  // every keystroke; committed on blur/submit (a blank name reverts).
+  const [nameDraft, setNameDraft] = useState(playlist?.name ?? '');
+
   // Batch AI clip generation across every song in the playlist.
   const [clipping, setClipping] = useState(false);
   const [clipDone, setClipDone] = useState(0);
@@ -57,6 +60,13 @@ export default function PlaylistDetail() {
 
   const closeAdd = () => {
     setAdding(false);
+  };
+
+  // Save the edited name, ignoring a blank (revert to the current name).
+  const commitName = () => {
+    const next = nameDraft.trim();
+    if (next && next !== playlist.name) updatePlaylist(playlist.id, { name: next });
+    else setNameDraft(playlist.name);
   };
 
   // How many songs in this playlist have already been played this game.
@@ -182,6 +192,15 @@ export default function PlaylistDetail() {
       />
       <ScrollView contentContainerStyle={styles.content}>
         <Card style={styles.controlsCard}>
+          <Field
+            label="Name"
+            value={nameDraft}
+            onChangeText={setNameDraft}
+            onEndEditing={commitName}
+            onSubmitEditing={commitName}
+            returnKeyType="done"
+            placeholder="Playlist name"
+          />
           <Text style={styles.catLabel}>Category</Text>
           <View style={styles.catRow}>
             {PLAYLIST_CATEGORIES.map((c) => (
@@ -292,14 +311,8 @@ export default function PlaylistDetail() {
           playlist.songs.map((song, i) => {
             const isPlayed = !!played[song.uri];
             return (
-            <Card
-              key={song.id}
-              style={{
-                marginBottom: theme.spacing(1),
-                opacity: isPlayed ? 0.55 : 1,
-              }}
-            >
-              <View style={styles.songRow}>
+            <Card key={song.id} style={{ marginBottom: theme.spacing(1) }}>
+              <View style={[styles.songRow, isPlayed && { opacity: 0.55 }]}>
                 {song.albumImageUrl ? (
                   <Image
                     source={{ uri: song.albumImageUrl }}
@@ -343,9 +356,14 @@ export default function PlaylistDetail() {
 
               {expanded === song.id && (
                 <View style={styles.editorArea}>
-                  <SongEditor
-                    song={song}
-                    onChange={(patch) => updateSong(playlist.id, song.id, patch)}
+                  <Button
+                    title="✂️  Trim clip & fades"
+                    onPress={() =>
+                      router.push(
+                        `/trim?kind=playlist&owner=${playlist.id}&song=${song.id}`
+                      )
+                    }
+                    style={{ marginBottom: theme.spacing(1) }}
                   />
                   <View style={styles.reorderRow}>
                     <Button

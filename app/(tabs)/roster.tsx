@@ -7,11 +7,11 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { theme } from '../../src/theme';
 import { useRosterStore } from '../../src/stores/rosterStore';
 import { Player } from '../../src/types';
 import { Button, Card, Field, Empty, BottomSheet } from '../../src/components/ui';
-import { SongEditor } from '../../src/components/SongEditor';
 import { TrackSearch } from '../../src/components/TrackSearch';
 import { playback } from '../../src/playback/playbackEngine';
 import { suggestClip } from '../../src/ai/clipAI';
@@ -21,6 +21,7 @@ import { AI_CONFIGURED } from '../../src/config';
 export default function RosterScreen() {
   const { players, addPlayer, updatePlayer, removePlayer, assignSong, importRoster } =
     useRosterStore();
+  const router = useRouter();
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -164,14 +165,11 @@ export default function RosterScreen() {
                   />
 
                   {p.song && (
-                    <View style={{ marginTop: theme.spacing(1.5) }}>
-                      <SongEditor
-                        song={p.song}
-                        onChange={(patch) =>
-                          p.song && assignSong(p.id, { ...p.song, ...patch })
-                        }
-                      />
-                    </View>
+                    <Button
+                      title="✂️  Trim clip & fades"
+                      onPress={() => router.push(`/trim?kind=player&owner=${p.id}`)}
+                      style={{ marginTop: theme.spacing(1.5) }}
+                    />
                   )}
 
                   <View style={styles.rowBtns}>

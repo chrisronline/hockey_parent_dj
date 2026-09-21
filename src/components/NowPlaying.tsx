@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { theme } from '../theme';
 import { usePlayback } from '../playback/usePlayback';
 import { playback } from '../playback/playbackEngine';
@@ -26,6 +26,7 @@ export function NowPlaying() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const router = useRouter();
+  const pathname = usePathname();
 
   // Jump to the goal board mid-playlist (e.g. a goal is scored). Minimizing to
   // the bar first keeps the song going and hands the screen back to the board.
@@ -129,7 +130,9 @@ export function NowPlaying() {
     })
   ).current;
 
-  if (idle || !song) return null;
+  // The full-screen trimmer owns its own transport + scrub UI, so stay out of
+  // its way while it's open.
+  if (idle || !song || pathname?.startsWith('/trim')) return null;
 
   const start = song.startMs ?? 0;
   const end = song.stopMs ?? song.durationMs;
