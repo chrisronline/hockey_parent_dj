@@ -13,6 +13,10 @@ import {
 // volume control, and for a rink the phone drives the PA anyway — device volume
 // is exactly what reaches the speakers, so this is the right lever.
 const FADE_TICK_MS = 50; // volume-step cadence during a ramp
+// Default fade length when the stop button is tapped and the song has no
+// fade-out of its own — long enough to sound deliberate, short enough that the
+// bench isn't waiting on it.
+const STOP_FADE_MS = 600;
 
 export type PlaybackStatus =
   | { state: 'idle' }
@@ -463,6 +467,30 @@ class PlaybackEngine {
     this.activeIntermissionId = undefined;
     this.segStart = undefined;
     this.emit({ state: 'idle' });
+  }
+
+  /**
+   * Graceful stop for the stop button: ramp the output down to silence, then
+   * hard-stop. Uses the song's own fadeOutMs when set, otherwise a short default
+   * so a manual stop always eases out instead of cutting. Paused (no audio to
+   * ramp) or fadeless falls straight through to stop().
+   */
+  async fadeStop(fadeMs?: number): Promise<void> {
+    const s = this.status;
+    if (s.state === 'idle') return;
+    const duration = fadeMs ?? s.song.fadeOutMs ?? STOP_FADE_MS;
+    if (s.state === 'playing' && duration > 0) {
+      // Bank/snapshot before the clock stops (same as stop()), then cancel the
+      // song's own auto-stop/fade and invalidate it so a mid-fade supersede
+      // (new play, another stop) abandons this one cleanly.
+      this.bankSegment();
+      this.snapshotIntermission();
+      this.clearTimers();
+      const token = ++this.playToken;
+      await this.ramp(this.targetVolume, 0, duration);
+      if (token !== this.playToken) return; // superseded mid-fade
+    }
+    await this.stop();
   }
 
   getStatus() {

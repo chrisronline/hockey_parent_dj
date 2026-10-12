@@ -217,7 +217,7 @@ export function NowPlaying() {
           </Pressable>
           <Pressable
             style={styles.barStopBtn}
-            onPress={() => playback.stop()}
+            onPress={() => playback.fadeStop()}
             hitSlop={8}
           >
             <Text style={styles.barStopText}>■</Text>
@@ -310,7 +310,7 @@ export function NowPlaying() {
       <View style={styles.fullControls}>
         <Pressable
           style={styles.stopBtnLg}
-          onPress={() => playback.stop()}
+          onPress={() => playback.fadeStop()}
           hitSlop={8}
         >
           <Text style={styles.stopTextLg}>■</Text>
